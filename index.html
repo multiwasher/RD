@@ -631,20 +631,10 @@
     </div>
 
     <!-- HEADER -->
-    <header class="bg-[#000000] border-b border-white/10 px-4 md:px-8 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-4 sticky top-0 z-30 shadow-xl">
-        <div class="flex items-center gap-4">
-            <div class="min-w-0">
-            </div>
-            <div class="flex items-center gap-1 ml-auto lg:ml-0">
-                <button onclick="toggleFilters()" id="toggleFiltersBtn" style="display:none;" class="p-2 rounded-lg border border-white/10 text-slate-400 hover:text-white transition-all active:scale-95 bg-white/5 flex items-center gap-2 px-3">
-                    <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
-                    <span class="hidden md:inline text-[9px] font-black uppercase tracking-widest">Filtros</span>
-                </button>
-            </div>
-        </div>
-
-        <input type="hidden" id="searchInput" value="">
-    </header>
+    <!-- Header removido (ecra so-leitura). Elementos abaixo ficam escondidos
+         apenas porque o JavaScript do mapa ainda os referencia. -->
+    <button onclick="toggleFilters()" id="toggleFiltersBtn" style="display:none;"></button>
+    <input type="hidden" id="searchInput" value="">
 
     <!-- FILTROS -->
     <div id="filterSection" class="bg-white/80 backdrop-blur-md px-4 md:px-8 py-4 border-b border-slate-200 sticky top-[160px] md:top-[138px] lg:top-[73px] z-20 space-y-4 shadow-sm is-collapsed">
