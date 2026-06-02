@@ -22,15 +22,15 @@
         /*  PALETA & TOKENS (Dark Mode — azul escuro + cinza)            */
         /* ============================================================= */
         :root {
-            /* Fundos */
-            --bg-deep:      #070B16;   /* fundo geral, navy quase preto */
-            --bg-panel:     #0E1526;   /* base dos painéis              */
-            --bg-panel-2:   #131C30;   /* cartões internos              */
-            --bg-elev:      #18233B;   /* elementos elevados / hover    */
+            /* Fundos — hierarquia em 3 níveis: fundo < painel < cartão  */
+            --bg-deep:      #1B2536;   /* fundo geral, cinza-azulado    */
+            --bg-panel:     #232F44;   /* base dos painéis              */
+            --bg-panel-2:   #2D3B53;   /* cartões internos (mais claro) */
+            --bg-elev:      #384864;   /* elementos elevados / hover    */
 
-            /* Linhas / bordas */
-            --line:         rgba(120, 150, 200, 0.12);
-            --line-strong:  rgba(120, 150, 200, 0.22);
+            /* Linhas / bordas — mais visíveis para separar campos      */
+            --line:         rgba(140, 165, 210, 0.18);
+            --line-strong:  rgba(140, 165, 210, 0.30);
 
             /* Texto */
             --txt:          #E8EEF9;
@@ -66,10 +66,10 @@
             content: "";
             position: fixed; inset: 0; z-index: 0; pointer-events: none;
             background-image:
-                radial-gradient(circle at 18% 12%, rgba(81,184,234,0.10), transparent 42%),
-                radial-gradient(circle at 92% 88%, rgba(27,71,148,0.18), transparent 45%),
-                linear-gradient(rgba(120,150,200,0.04) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(120,150,200,0.04) 1px, transparent 1px);
+                radial-gradient(circle at 18% 12%, rgba(81,184,234,0.08), transparent 42%),
+                radial-gradient(circle at 92% 88%, rgba(27,71,148,0.12), transparent 45%),
+                linear-gradient(rgba(0,0,0,0.10) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.10) 1px, transparent 1px);
             background-size: 100% 100%, 100% 100%, 38px 38px, 38px 38px;
         }
 
@@ -98,6 +98,11 @@
             backdrop-filter: blur(8px);
         }
         .brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
+        /* Logótipo Somengil em imagem (substitui o antigo "S" + texto) */
+        .brand-logo {
+            height: 38px; width: auto; display: block;
+            object-fit: contain;
+        }
         .brand-mark {
             width: 42px; height: 42px; border-radius: 11px;
             background: var(--acc-grad);
@@ -158,7 +163,7 @@
             position: relative;
             display: flex; flex-direction: column;
             min-height: 0; min-width: 0;
-            background: linear-gradient(180deg, var(--bg-panel) 0%, #0B1120 100%);
+            background: linear-gradient(180deg, var(--bg-panel) 0%, #1E2A3D 100%);
             border: 1px solid var(--line);
             border-radius: 16px;
             overflow: hidden;
@@ -229,11 +234,11 @@
         .mach-top .model { font-size: 8.5px; font-weight: 700; color: var(--txt-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .posto { flex: 0 0 auto; font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 6px; background: rgba(81,184,234,0.12); color: var(--acc-1); border: 1px solid rgba(81,184,234,0.22); }
         .pct { margin-left: auto; flex: 0 0 auto; font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 800; }
-        .bar { height: 6px; border-radius: 6px; background: rgba(255,255,255,0.06); overflow: hidden; }
+        .bar { height: 6px; border-radius: 6px; background: rgba(0,0,0,0.22); overflow: hidden; }
         .bar > i { display: block; height: 100%; border-radius: 6px; background: var(--acc-grad); }
         .phases { display: flex; gap: 4px; margin-top: 8px; }
         .phase { flex: 1; text-align: center; }
-        .phase .seg { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.07); margin-bottom: 4px; }
+        .phase .seg { height: 4px; border-radius: 3px; background: rgba(0,0,0,0.22); margin-bottom: 4px; }
         .phase .lbl { font-size: 6.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--txt-faint); white-space: nowrap; }
 
         /* ============================================================= */
@@ -288,7 +293,7 @@
         .cat .crow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
         .cat .cname { font-size: 9.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
         .cat .cval { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; color: var(--txt-mute); }
-        .cat .cbar { height: 7px; border-radius: 6px; background: rgba(255,255,255,0.06); overflow: hidden; }
+        .cat .cbar { height: 7px; border-radius: 6px; background: rgba(0,0,0,0.22); overflow: hidden; }
         .cat .cbar > i { display: block; height: 100%; border-radius: 6px; }
 
         .ok-c   { color: var(--ok); }
@@ -318,11 +323,9 @@
     <!-- ============================================================= -->
     <header class="topbar">
         <div class="brand">
-            <div class="brand-mark">S</div>
-            <div>
-                <h1>Somengil</h1>
-                <p>Sala de Engenharia · Controlo em Tempo Real</p>
-            </div>
+            <!-- Logótipo Somengil (imagem) -->
+            <img src="https://res.cloudinary.com/dlkkjtgvy/image/upload/v1780388780/somengil_logo_white_ofh0xi.png"
+                 alt="Somengil" class="brand-logo">
         </div>
         <div class="topbar-right">
             <div class="live"><span class="dot"></span> Em Direto</div>
@@ -630,54 +633,17 @@
     <!-- HEADER -->
     <header class="bg-[#000000] border-b border-white/10 px-4 md:px-8 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-4 sticky top-0 z-30 shadow-xl">
         <div class="flex items-center gap-4">
-            <div class="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center flex-shrink-0">
-                <img src="https://static.wixstatic.com/media/a6967f_95db0dbb18554c0299efd61c7e081848~mv2.png" 
-                     alt="Somengil Logo" 
-                     class="max-w-full max-h-full object-contain"
-                     fetchpriority="high"
-                     loading="eager"
-                     decoding="async">
-            </div>
             <div class="min-w-0">
-                <h1 class="text-base md:text-lg font-black uppercase leading-none tracking-[0.2em] truncate text-white">Somengil</h1>
-                <p class="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5 flex items-center gap-1">
-                    <i data-lucide="bar-chart-3" class="w-2.5 h-2.5 md:w-3 md:h-3"></i> MAPA DE ENTREGAS
-                </p>
             </div>
             <div class="flex items-center gap-1 ml-auto lg:ml-0">
-                <button onclick="toggleFilters()" id="toggleFiltersBtn" class="p-2 rounded-lg border border-white/10 text-slate-400 hover:text-white transition-all active:scale-95 bg-white/5 flex items-center gap-2 px-3">
+                <button onclick="toggleFilters()" id="toggleFiltersBtn" style="display:none;" class="p-2 rounded-lg border border-white/10 text-slate-400 hover:text-white transition-all active:scale-95 bg-white/5 flex items-center gap-2 px-3">
                     <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
                     <span class="hidden md:inline text-[9px] font-black uppercase tracking-widest">Filtros</span>
                 </button>
-                <button onclick="fetchData()" id="refreshBtn" class="p-2 rounded-lg border border-white/10 text-slate-400 hover:text-white transition-all active:scale-95 bg-white/5">
-                    <i data-lucide="refresh-ccw" class="w-4 h-4"></i>
-                </button>
             </div>
         </div>
 
-        <div class="flex flex-col sm:flex-row flex-1 max-w-2xl gap-3 items-center">
-            <div class="relative flex-1 w-full">
-                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4"></i>
-                <input type="text" id="searchInput" name="mws_lookup_field" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" readonly placeholder="Pesquisar Cliente ou NÚMERO..." class="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/10 rounded-xl text-sm font-bold text-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none placeholder:text-slate-500">
-            </div>
-            
-            <div class="flex items-center gap-3 w-full sm:w-auto">
-                <button onclick="toggleAuth()" id="authBtn" class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-white/5 text-slate-400 border border-white/10 transition-all active:scale-95 whitespace-nowrap hover:bg-white/10 hover:text-white">
-                    <i data-lucide="lock" class="w-4 h-4" id="authIcon"></i>
-                    <span id="authText">Leitura</span>
-                </button>
-
-                <div class="flex items-center gap-2 bg-white/5 rounded-xl p-1.5 border border-white/10 flex-shrink-0">
-                    <div class="chart-container">
-                        <canvas id="modelChart"></canvas>
-                    </div>
-                    <div class="flex flex-col pr-1">
-                        <span class="text-[7px] md:text-[8px] font-black uppercase text-slate-500 tracking-tighter">Mix</span>
-                        <span id="totalVisibleCount" class="text-[10px] md:text-xs font-black text-white leading-tight">0</span>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <input type="hidden" id="searchInput" value="">
     </header>
 
     <!-- FILTROS -->
@@ -1168,6 +1134,7 @@
         function closePasswordModal() { document.getElementById('passwordOverlay').style.display = 'none'; document.getElementById('passwordInput').value = ''; }
         function updateAuthUI() {
             const btn = document.getElementById('authBtn'); const icon = document.getElementById('authIcon'); const text = document.getElementById('authText');
+            if (!btn || !icon || !text) { lucide.createIcons(); if (state.selectedId) openModal(state.selectedId); return; }
             if (state.isAuthorized) { btn.className = "flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-100 whitespace-nowrap"; icon.setAttribute('data-lucide', 'unlock'); text.innerText = "Modo Edição"; }
             else { btn.className = "flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-slate-50 text-slate-400 border border-slate-200 whitespace-nowrap"; icon.setAttribute('data-lucide', 'lock'); text.innerText = "Leitura"; }
             lucide.createIcons(); if (state.selectedId) openModal(state.selectedId);
@@ -1319,7 +1286,7 @@ function renderMontagem(){
             <div class="phases">
                 ${m.fases.map((f,i)=>`
                     <div class="phase">
-                        <div class="seg" style="background:${f>0?pctColor(f):'rgba(255,255,255,0.07)'};opacity:${f>0?(0.45+0.55*f):1}"></div>
+                        <div class="seg" style="background:${f>0?pctColor(f):'rgba(0,0,0,0.22)'};opacity:${f>0?(0.45+0.55*f):1}"></div>
                         <div class="lbl">${FASES_MONTAGEM[i]}</div>
                     </div>`).join('')}
             </div>
@@ -1438,7 +1405,7 @@ function renderContinuidade(){
         data: {
             datasets: [{
                 data: [taxa, 100-taxa],
-                backgroundColor: [color, 'rgba(255,255,255,0.06)'],
+                backgroundColor: [color, 'rgba(0,0,0,0.22)'],
                 borderWidth: 0,
                 circumference: 360,
             }]
