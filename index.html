@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Somengil · Sala de Engenharia — Controlo em Tempo Real</title>
+
+    <!-- ============================================================= -->
+    <!--  DEPENDÊNCIAS (CDN)                                            -->
+    <!--  Mesma stack do dashboard do mapa, para coerência visual.     -->
+    <!-- ============================================================= -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Tipografia: Archivo (industrial / sinalética) + JetBrains Mono (instrumentação) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        /* ============================================================= */
+        /*  PALETA & TOKENS (Dark Mode — azul escuro + cinza)            */
+        /* ============================================================= */
+        :root {
+            /* Fundos */
+            --bg-deep:      #070B16;   /* fundo geral, navy quase preto */
+            --bg-panel:     #0E1526;   /* base dos painéis              */
+            --bg-panel-2:   #131C30;   /* cartões internos              */
+            --bg-elev:      #18233B;   /* elementos elevados / hover    */
+
+            /* Linhas / bordas */
+            --line:         rgba(120, 150, 200, 0.12);
+            --line-strong:  rgba(120, 150, 200, 0.22);
+
+            /* Texto */
+            --txt:          #E8EEF9;
+            --txt-mute:     #8A99B5;
+            --txt-faint:    #56657F;
+
+            /* Acento Somengil (azul claro -> azul escuro) */
+            --acc-1:        #51B8EA;
+            --acc-2:        #1B4794;
+            --acc-grad:     linear-gradient(90deg, #51B8EA 0%, #1B4794 100%);
+
+            /* Estados */
+            --ok:           #34D399;
+            --warn:         #FBBF24;
+            --bad:          #F87171;
+            --idle:         #475067;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;                 /* ecrã de parede: sem scroll global */
+            background: var(--bg-deep);
+            color: var(--txt);
+            font-family: 'Archivo', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Textura subtil de fundo: grelha técnica + brilho radial */
+        body::before {
+            content: "";
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image:
+                radial-gradient(circle at 18% 12%, rgba(81,184,234,0.10), transparent 42%),
+                radial-gradient(circle at 92% 88%, rgba(27,71,148,0.18), transparent 45%),
+                linear-gradient(rgba(120,150,200,0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(120,150,200,0.04) 1px, transparent 1px);
+            background-size: 100% 100%, 100% 100%, 38px 38px, 38px 38px;
+        }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* ============================================================= */
+        /*  ESTRUTURA GERAL (header + grid)                              */
+        /* ============================================================= */
+        .app {
+            position: relative; z-index: 1;
+            height: 100vh;
+            display: flex; flex-direction: column;
+            padding: 14px;
+            gap: 12px;
+        }
+
+        /* ----- Barra de topo ----- */
+        .topbar {
+            flex: 0 0 auto;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 16px;
+            padding: 12px 20px;
+            background: linear-gradient(180deg, rgba(24,35,59,0.9), rgba(14,21,38,0.9));
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            backdrop-filter: blur(8px);
+        }
+        .brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
+        .brand-mark {
+            width: 42px; height: 42px; border-radius: 11px;
+            background: var(--acc-grad);
+            display: grid; place-items: center;
+            font-weight: 900; font-size: 19px; color: #fff;
+            box-shadow: 0 0 22px rgba(81,184,234,0.35);
+            flex: 0 0 auto;
+        }
+        .brand h1 {
+            margin: 0; font-size: 17px; font-weight: 900; letter-spacing: 0.22em;
+            text-transform: uppercase; line-height: 1;
+        }
+        .brand p {
+            margin: 5px 0 0; font-size: 9px; font-weight: 700; letter-spacing: 0.28em;
+            text-transform: uppercase; color: var(--txt-mute);
+        }
+        .topbar-right { display: flex; align-items: center; gap: 22px; flex: 0 0 auto; }
+        .live {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 10px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase;
+            color: var(--ok);
+        }
+        .live .dot {
+            width: 9px; height: 9px; border-radius: 50%; background: var(--ok);
+            box-shadow: 0 0 0 0 rgba(52,211,153,0.6);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(52,211,153,0.6); }
+            70%  { box-shadow: 0 0 0 10px rgba(52,211,153,0); }
+            100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+        }
+        .clock { text-align: right; }
+        .clock .t { font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: 0.04em; }
+        .clock .d { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--txt-mute); margin-top: 4px; }
+
+        /* ----- Grelha principal de painéis ----- */
+        /*  Coluna 1 (mapa) ocupa toda a altura. Colunas 2 e 3 partidas 50/50. */
+        .grid {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: 1.28fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 12px;
+        }
+        /* Posicionamento explícito de cada bloco */
+        #panel-mapa        { grid-column: 1; grid-row: 1 / span 2; }  /* COLUNA 1 — altura inteira */
+        #panel-montagem    { grid-column: 2; grid-row: 1; }          /* COLUNA 2 · LINHA 1         */
+        #panel-soldadura   { grid-column: 2; grid-row: 2; }          /* COLUNA 2 · LINHA 2         */
+        #panel-trolleys    { grid-column: 3; grid-row: 1; }          /* COLUNA 3 · LINHA 1         */
+        #panel-continuidade{ grid-column: 3; grid-row: 2; }          /* COLUNA 3 · LINHA 2         */
+
+        /* ============================================================= */
+        /*  PAINEL (contentor reutilizável)                              */
+        /* ============================================================= */
+        .panel {
+            position: relative;
+            display: flex; flex-direction: column;
+            min-height: 0; min-width: 0;
+            background: linear-gradient(180deg, var(--bg-panel) 0%, #0B1120 100%);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 18px 40px -24px rgba(0,0,0,0.8);
+        }
+        .panel-head {
+            flex: 0 0 auto;
+            display: flex; align-items: center; gap: 11px;
+            padding: 13px 16px;
+            border-bottom: 1px solid var(--line);
+        }
+        .panel-head .ic {
+            width: 30px; height: 30px; border-radius: 8px;
+            display: grid; place-items: center;
+            background: rgba(81,184,234,0.12);
+            color: var(--acc-1);
+            border: 1px solid rgba(81,184,234,0.25);
+        }
+        .panel-head .ic i { width: 16px; height: 16px; }
+        .panel-head .ttl { min-width: 0; }
+        .panel-head .ttl h2 {
+            margin: 0; font-size: 12.5px; font-weight: 800; letter-spacing: 0.14em;
+            text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .panel-head .ttl span {
+            font-size: 8.5px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
+            color: var(--txt-faint);
+        }
+        .panel-head .badge {
+            margin-left: auto; flex: 0 0 auto;
+            font-size: 9px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+            padding: 4px 10px; border-radius: 999px;
+            background: rgba(81,184,234,0.1); color: var(--acc-1);
+            border: 1px solid rgba(81,184,234,0.25);
+        }
+        .panel-body { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 12px 14px; }
+
+        /* Scrollbar discreta para listas internas */
+        .scroll { overflow-y: auto; height: 100%; padding-right: 4px; }
+        .scroll::-webkit-scrollbar { width: 5px; }
+        .scroll::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 10px; }
+        .scroll::-webkit-scrollbar-track { background: transparent; }
+
+        /* ----- Tira de KPIs (reutilizável) ----- */
+        .kpis { display: flex; gap: 8px; margin-bottom: 11px; flex: 0 0 auto; }
+        .kpi {
+            flex: 1; background: var(--bg-panel-2); border: 1px solid var(--line);
+            border-radius: 11px; padding: 9px 11px; min-width: 0;
+        }
+        .kpi .v { font-family: 'JetBrains Mono', monospace; font-size: 21px; font-weight: 800; line-height: 1; }
+        .kpi .l { font-size: 8px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--txt-mute); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* ============================================================= */
+        /*  COLUNA 1 — MAPA (iframe da aplicação existente)              */
+        /* ============================================================= */
+        #panel-mapa .panel-body { padding: 0; position: relative; }
+        #mapaFrame {
+            width: 100%; height: 100%; border: 0; display: block;
+            background: #F1F5F9;
+        }
+
+        /* ============================================================= */
+        /*  MONTAGEM — cartões de máquina com progresso por fase         */
+        /* ============================================================= */
+        .mach { background: var(--bg-panel-2); border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px; margin-bottom: 8px; }
+        .mach-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .mach-top .name { font-size: 11.5px; font-weight: 800; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .mach-top .model { font-size: 8.5px; font-weight: 700; color: var(--txt-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .posto { flex: 0 0 auto; font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 6px; background: rgba(81,184,234,0.12); color: var(--acc-1); border: 1px solid rgba(81,184,234,0.22); }
+        .pct { margin-left: auto; flex: 0 0 auto; font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 800; }
+        .bar { height: 6px; border-radius: 6px; background: rgba(255,255,255,0.06); overflow: hidden; }
+        .bar > i { display: block; height: 100%; border-radius: 6px; background: var(--acc-grad); }
+        .phases { display: flex; gap: 4px; margin-top: 8px; }
+        .phase { flex: 1; text-align: center; }
+        .phase .seg { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.07); margin-bottom: 4px; }
+        .phase .lbl { font-size: 6.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--txt-faint); white-space: nowrap; }
+
+        /* ============================================================= */
+        /*  SOLDADURA — lotes com stepper de 3 fases                     */
+        /* ============================================================= */
+        .lot { display: flex; align-items: center; gap: 10px; background: var(--bg-panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; margin-bottom: 7px; }
+        .lot .info { min-width: 0; width: 36%; }
+        .lot .info .l1 { font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .lot .info .l2 { font-size: 8px; font-weight: 700; color: var(--txt-mute); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 3px; }
+        .stepper { display: flex; align-items: center; gap: 0; flex: 1 1 auto; }
+        .step { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 0 0 auto; }
+        .step .node { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--idle); background: var(--bg-panel); }
+        .step .node i { width: 9px; height: 9px; color: #fff; opacity: 0; }
+        .step .lab { font-size: 6.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--txt-faint); }
+        .step.done .node { background: var(--ok); border-color: var(--ok); }
+        .step.done .node i { opacity: 1; }
+        .step.done .lab { color: var(--ok); }
+        .step.active .node { border-color: var(--warn); background: rgba(251,191,36,0.18); animation: pulse-w 1.6s infinite; }
+        .step.active .lab { color: var(--warn); }
+        @keyframes pulse-w { 0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.5);} 60% { box-shadow:0 0 0 6px rgba(251,191,36,0);} }
+        .connector { flex: 1 1 auto; height: 2px; background: var(--idle); margin: 0 2px; margin-bottom: 14px; min-width: 14px; }
+        .connector.done { background: var(--ok); }
+        .lot .due { flex: 0 0 auto; text-align: right; }
+        .lot .due .dlab { font-size: 6.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--txt-faint); }
+        .lot .due .dval { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; margin-top: 2px; }
+
+        /* ============================================================= */
+        /*  TROLLEYS — cartões de encomenda                              */
+        /* ============================================================= */
+        .trow { display: flex; align-items: center; gap: 10px; background: var(--bg-panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; }
+        .trow.void { opacity: 0.5; }
+        .qty { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 9px; background: var(--acc-grad); display: grid; place-items: center; font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 17px; color: #fff; }
+        .qty.void { background: rgba(248,113,113,0.18); color: var(--bad); border: 1px solid rgba(248,113,113,0.3); }
+        .tinfo { min-width: 0; flex: 1 1 auto; }
+        .tinfo .tc { font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tinfo .tm { font-size: 8.5px; font-weight: 700; color: var(--txt-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+        .sup { flex: 0 0 auto; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 120px; }
+        .sup span { font-size: 7.5px; font-weight: 800; letter-spacing: 0.04em; padding: 3px 6px; border-radius: 5px; background: rgba(81,184,234,0.1); color: var(--acc-1); border: 1px solid rgba(81,184,234,0.2); white-space: nowrap; }
+        .sup span.void { background: rgba(248,113,113,0.12); color: var(--bad); border-color: rgba(248,113,113,0.25); }
+
+        /* ============================================================= */
+        /*  CONTINUIDADE PE — KPIs + barras de categoria + gauge         */
+        /* ============================================================= */
+        .cont-wrap { display: flex; gap: 14px; height: 100%; }
+        .cont-left { flex: 0 0 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+        .gaugebox { position: relative; width: 124px; height: 124px; }
+        .gaugebox .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .gaugebox .center .g-v { font-family: 'JetBrains Mono', monospace; font-size: 26px; font-weight: 800; line-height: 1; }
+        .gaugebox .center .g-l { font-size: 7px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: var(--txt-mute); margin-top: 3px; }
+        .cont-right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 9px; }
+        .cat { }
+        .cat .crow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+        .cat .cname { font-size: 9.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+        .cat .cval { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; color: var(--txt-mute); }
+        .cat .cbar { height: 7px; border-radius: 6px; background: rgba(255,255,255,0.06); overflow: hidden; }
+        .cat .cbar > i { display: block; height: 100%; border-radius: 6px; }
+
+        .ok-c   { color: var(--ok); }
+        .warn-c { color: var(--warn); }
+        .bad-c  { color: var(--bad); }
+
+        /* ============================================================= */
+        /*  RESPONSIVO — em ecrãs pequenos empilha numa coluna           */
+        /* ============================================================= */
+        @media (max-width: 1100px) {
+            html, body { overflow: auto; }
+            .app { height: auto; }
+            .grid { grid-template-columns: 1fr; grid-template-rows: none; }
+            #panel-mapa, #panel-montagem, #panel-soldadura, #panel-trolleys, #panel-continuidade {
+                grid-column: auto; grid-row: auto;
+            }
+            #panel-mapa { min-height: 520px; }
+            .panel { min-height: 300px; }
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+
+    <!-- ============================================================= -->
+    <!--  BARRA DE TOPO                                                -->
+    <!-- ============================================================= -->
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-mark">S</div>
+            <div>
+                <h1>Somengil</h1>
+                <p>Sala de Engenharia · Controlo em Tempo Real</p>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <div class="live"><span class="dot"></span> Em Direto</div>
+            <div class="clock">
+                <div class="t mono" id="clockTime">--:--</div>
+                <div class="d" id="clockDate">—</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============================================================= -->
+    <!--  GRELHA DE PAINÉIS                                            -->
+    <!-- ============================================================= -->
+    <div class="grid">
+
+        <!-- ========================================================= -->
+        <!--  COLUNA 1  ·  MAPA DE PLANEAMENTO MWS (altura inteira)    -->
+        <!--  Aplicação existente (mapa.html) embebida via <iframe>.  -->
+        <!--  >>> Mantém o ficheiro "mapa.html" na MESMA pasta. <<<    -->
+        <!-- ========================================================= -->
+        <section class="panel" id="panel-mapa">
+            <div class="panel-head">
+                <div class="ic"><i data-lucide="map"></i></div>
+                <div class="ttl">
+                    <h2>Mapa de Planeamento MWS</h2>
+                    <span>Instalações · Estado por Equipamento</span>
+                </div>
+                <div class="badge">Live</div>
+            </div>
+            <div class="panel-body">
+                <!-- COLOCA AQUI o teu dashboard do mapa. Já está ligado a mapa.html -->
+                <iframe id="mapaFrame" title="Mapa de Planeamento MWS"></iframe>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!--  COLUNA 2 · LINHA 1  ·  MONTAGEM                          -->
+        <!--  Progresso de montagem por máquina (7 fases).            -->
+        <!-- ========================================================= -->
+        <section class="panel" id="panel-montagem">
+            <div class="panel-head">
+                <div class="ic"><i data-lucide="wrench"></i></div>
+                <div class="ttl">
+                    <h2>Montagem</h2>
+                    <span>Linha de Produção · Progresso por Posto</span>
+                </div>
+                <div class="badge" id="montagemBadge">—</div>
+            </div>
+            <div class="panel-body" style="display:flex;flex-direction:column;">
+                <!-- KPIs -->
+                <div class="kpis" id="montagemKpis"></div>
+                <!-- COLOCA AQUI mais gráficos de montagem, se necessário -->
+                <div class="scroll" id="montagemList"></div>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!--  COLUNA 2 · LINHA 2  ·  SOLDADURA                         -->
+        <!--  Lotes em Laser -> Serralharia -> Soldadura/Acabamento.  -->
+        <!-- ========================================================= -->
+        <section class="panel" id="panel-soldadura">
+            <div class="panel-head">
+                <div class="ic"><i data-lucide="flame"></i></div>
+                <div class="ttl">
+                    <h2>Soldadura</h2>
+                    <span>Lotes · Laser → Serralharia → Acabamento</span>
+                </div>
+                <div class="badge" id="soldaduraBadge">—</div>
+            </div>
+            <div class="panel-body" style="display:flex;flex-direction:column;">
+                <div class="kpis" id="soldaduraKpis"></div>
+                <!-- COLOCA AQUI o teu conteúdo de soldadura -->
+                <div class="scroll" id="soldaduraList"></div>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!--  COLUNA 3 · LINHA 1  ·  TROLLEYS                          -->
+        <!--  Encomendas de trolleys/carros por cliente e fornecedor. -->
+        <!-- ========================================================= -->
+        <section class="panel" id="panel-trolleys">
+            <div class="panel-head">
+                <div class="ic"><i data-lucide="truck"></i></div>
+                <div class="ttl">
+                    <h2>Trolleys</h2>
+                    <span>Encomendas · Fornecedores</span>
+                </div>
+                <div class="badge" id="trolleysBadge">—</div>
+            </div>
+            <div class="panel-body" style="display:flex;flex-direction:column;">
+                <div class="kpis" id="trolleysKpis"></div>
+                <!-- COLOCA AQUI o teu conteúdo de trolleys -->
+                <div class="scroll" id="trolleysList"></div>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!--  COLUNA 3 · LINHA 2  ·  CONTINUIDADE PE                   -->
+        <!--  Teste de continuidade do PE (terra de proteção).        -->
+        <!-- ========================================================= -->
+        <section class="panel" id="panel-continuidade">
+            <div class="panel-head">
+                <div class="ic"><i data-lucide="zap"></i></div>
+                <div class="ttl">
+                    <h2>Continuidade PE</h2>
+                    <span>Terra de Proteção · Conformidade Ω</span>
+                </div>
+                <div class="badge" id="continuidadeBadge">—</div>
+            </div>
+            <div class="panel-body">
+                <!-- COLOCA AQUI o teu conteúdo de continuidade -->
+                <div class="cont-wrap">
+                    <div class="cont-left">
+                        <div class="gaugebox">
+                            <canvas id="gaugeChart"></canvas>
+                            <div class="center">
+                                <div class="g-v ok-c" id="gaugeVal">—</div>
+                                <div class="g-l">Conforme</div>
+                            </div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div class="mono" style="font-size:13px;font-weight:800;" id="contMedia">— Ω</div>
+                            <div style="font-size:7px;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;color:var(--txt-mute);margin-top:3px;">Média de Resistência</div>
+                        </div>
+                    </div>
+                    <div class="cont-right">
+                        <div class="kpis" style="margin:0 0 4px;">
+                            <div class="kpi"><div class="v" id="contTotal">—</div><div class="l">Pontos</div></div>
+                            <div class="kpi"><div class="v ok-c" id="contOk">—</div><div class="l">Conformes</div></div>
+                            <div class="kpi"><div class="v bad-c" id="contNok">—</div><div class="l">Não Conf.</div></div>
+                        </div>
+                        <div id="catList"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+</div>
+
+<!-- ============================================================= -->
+<!--  CONTEÚDO DO MAPA (embebido)                                  -->
+<!--  Aplicação "mapa.html" guardada como template e injetada no   -->
+<!--  iframe da Coluna 1 via srcdoc (partilha a origem da página,  -->
+<!--  por isso o localStorage e o fetch ao Google funcionam).      -->
+<!--  >>> Para atualizar o mapa, substitui o conteúdo abaixo. <<<  -->
+<!-- ============================================================= -->
+<script type="text/html" id="mapaSource">
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Somengil MWS Planning</title>
+    <script src="https://cdn.tailwindcss.com"><\/script>
+    <script src="https://unpkg.com/lucide@latest"><\/script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
+        .animate-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .modal-open { overflow: hidden; }
+        
+        button, .cursor-pointer { touch-action: manipulation; }
+
+        /* Animação para o ícone de mensagem com notas pendentes */
+        @keyframes bounceSubtle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        .animate-bounce-subtle {
+            animation: bounceSubtle 2s ease-in-out infinite;
+        }
+
+        /* Estilo para a imagem de fundo subtil - Otimizado para performance */
+        .page-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background-image: url('https://static.wixstatic.com/media/a6967f_1746c625ed0c40658411959eda830fe2~mv2.gif');
+            background-size: 400px;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0.05;
+            pointer-events: none;
+            will-change: transform; 
+        }
+
+        /* BASE – fundo preto + borda gradiente */
+        .somengil-filter-btn {
+            position: relative;
+            background:
+                linear-gradient(#000000, #000000) padding-box,
+                linear-gradient(
+                    90deg,
+                    rgba(81,184,234,1) 0%,
+                    rgba(27,71,148,1) 100%
+                ) border-box;
+            border: 2px solid transparent;
+            border-radius: 0.75rem;
+            color: #FFFFFF;
+            padding: 0.5rem 1.25rem;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .somengil-filter-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(81,184,234,0.2);
+        }
+
+        .somengil-filter-btn.active {
+            background:
+                linear-gradient(
+                    90deg,
+                    rgba(81,184,234,1) 0%,
+                    rgba(27,71,148,1) 100%
+                ) padding-box,
+                linear-gradient(
+                    90deg,
+                    rgba(81,184,234,1) 0%,
+                    rgba(27,71,148,1) 100%
+                ) border-box;
+            box-shadow: 0 0 12px rgba(81,184,234,0.35);
+        }
+
+        @keyframes logoPulse {
+            0% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.6; }
+        }
+        .animate-logo-loading {
+            animation: logoPulse 1.5s ease-in-out infinite;
+        }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            z-index: 300;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .chart-container {
+            width: 60px;
+            height: 60px;
+            position: relative;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                width: 80px;
+                height: 80px;
+            }
+        }
+
+        #filterSection {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            max-height: 1000px;
+            overflow: hidden;
+            opacity: 1;
+        }
+        
+        #filterSection.is-collapsed {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            border-bottom-width: 0;
+            opacity: 0;
+            pointer-events: none;
+            margin-bottom: 0;
+        }
+
+    </style>
+</head>
+<body class="bg-[#F1F5F9] text-slate-900 min-h-screen">
+
+    <div class="page-background"></div>
+
+    <div id="globalLoader" class="loading-overlay">
+        <div class="relative w-28 h-28 flex items-center justify-center mb-6">
+            <div class="absolute inset-0 border-2 border-slate-100 rounded-full"></div>
+            <div class="absolute inset-0 border-t-2 border-blue-600 rounded-full animate-spin"></div>
+            <img src="https://static.wixstatic.com/media/a6967f_95db0dbb18554c0299efd61c7e081848~mv2.png" 
+                 alt="Somengil Loading" 
+                 class="w-16 h-16 object-contain animate-logo-loading"
+                 decoding="async">
+        </div>
+        <p class="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Sincronização Ativa</p>
+        <p class="text-[8px] font-bold uppercase text-blue-600 mt-2">Base de Dados Somengil</p>
+    </div>
+
+    <!-- HEADER -->
+    <header class="bg-[#000000] border-b border-white/10 px-4 md:px-8 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-4 sticky top-0 z-30 shadow-xl">
+        <div class="flex items-center gap-4">
+            <div class="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center flex-shrink-0">
+                <img src="https://static.wixstatic.com/media/a6967f_95db0dbb18554c0299efd61c7e081848~mv2.png" 
+                     alt="Somengil Logo" 
+                     class="max-w-full max-h-full object-contain"
+                     fetchpriority="high"
+                     loading="eager"
+                     decoding="async">
+            </div>
+            <div class="min-w-0">
+                <h1 class="text-base md:text-lg font-black uppercase leading-none tracking-[0.2em] truncate text-white">Somengil</h1>
+                <p class="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5 flex items-center gap-1">
+                    <i data-lucide="bar-chart-3" class="w-2.5 h-2.5 md:w-3 md:h-3"></i> MAPA DE ENTREGAS
+                </p>
+            </div>
+            <div class="flex items-center gap-1 ml-auto lg:ml-0">
+                <button onclick="toggleFilters()" id="toggleFiltersBtn" class="p-2 rounded-lg border border-white/10 text-slate-400 hover:text-white transition-all active:scale-95 bg-white/5 flex items-center gap-2 px-3">
+                    <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+                    <span class="hidden md:inline text-[9px] font-black uppercase tracking-widest">Filtros</span>
+                </button>
+                <button onclick="fetchData()" id="refreshBtn" class="p-2 rounded-lg border border-white/10 text-slate-400 hover:text-white transition-all active:scale-95 bg-white/5">
+                    <i data-lucide="refresh-ccw" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row flex-1 max-w-2xl gap-3 items-center">
+            <div class="relative flex-1 w-full">
+                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4"></i>
+                <input type="text" id="searchInput" name="mws_lookup_field" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" readonly placeholder="Pesquisar Cliente ou NÚMERO..." class="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/10 rounded-xl text-sm font-bold text-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none placeholder:text-slate-500">
+            </div>
+            
+            <div class="flex items-center gap-3 w-full sm:w-auto">
+                <button onclick="toggleAuth()" id="authBtn" class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-white/5 text-slate-400 border border-white/10 transition-all active:scale-95 whitespace-nowrap hover:bg-white/10 hover:text-white">
+                    <i data-lucide="lock" class="w-4 h-4" id="authIcon"></i>
+                    <span id="authText">Leitura</span>
+                </button>
+
+                <div class="flex items-center gap-2 bg-white/5 rounded-xl p-1.5 border border-white/10 flex-shrink-0">
+                    <div class="chart-container">
+                        <canvas id="modelChart"></canvas>
+                    </div>
+                    <div class="flex flex-col pr-1">
+                        <span class="text-[7px] md:text-[8px] font-black uppercase text-slate-500 tracking-tighter">Mix</span>
+                        <span id="totalVisibleCount" class="text-[10px] md:text-xs font-black text-white leading-tight">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- FILTROS -->
+    <div id="filterSection" class="bg-white/80 backdrop-blur-md px-4 md:px-8 py-4 border-b border-slate-200 sticky top-[160px] md:top-[138px] lg:top-[73px] z-20 space-y-4 shadow-sm is-collapsed">
+        <div class="flex flex-col lg:flex-row lg:items-center gap-x-8 gap-y-4">
+            <div class="flex flex-wrap gap-2 items-center min-w-0">
+                <span class="text-[9px] font-black uppercase text-slate-400 tracking-widest mr-1 flex items-center gap-1 flex-shrink-0">
+                    <i data-lucide="layers" class="w-3 h-3"></i> Equipamentos:
+                </span>
+                <div id="equipmentFilterList" class="flex flex-wrap gap-2"></div>
+            </div>
+            <div class="flex flex-wrap gap-2 items-center lg:border-l lg:border-slate-100 lg:pl-8 min-w-0">
+                <span class="text-[9px] font-black uppercase text-slate-400 tracking-widest mr-1 flex items-center gap-1 flex-shrink-0">
+                    <i data-lucide="calendar" class="w-3 h-3"></i> Anos:
+                </span>
+                <div id="yearFilterList" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+        <div class="flex flex-wrap lg:flex-nowrap gap-4 items-center border-t border-slate-100 pt-3">
+            <div class="flex flex-wrap gap-2 items-center flex-1 min-w-0">
+                <span class="text-[9px] font-black uppercase text-slate-400 tracking-widest mr-1 flex items-center gap-1 flex-shrink-0">
+                    <i data-lucide="filter" class="w-3 h-3"></i> Estados:
+                </span>
+                <div id="statusFilterList" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <main id="mainContainer" class="p-4 md:p-8 space-y-12 min-h-[60vh]"></main>
+
+    <!-- MODAL FICHA TÉCNICA -->
+    <div id="modalOverlay" class="fixed inset-0 bg-slate-900/90 backdrop-blur-xl z-[100] hidden items-center justify-center p-2 sm:p-4">
+        <div class="bg-white rounded-[1.5rem] sm:rounded-[2rem] w-full max-w-7xl max-h-[95vh] flex flex-col shadow-2xl overflow-hidden animate-in">
+            <div id="modalHeader" class="p-6 md:p-8 flex flex-col sm:flex-row justify-between items-start sm:items-center text-white transition-colors duration-300 gap-4">
+                <div class="flex flex-col min-w-0">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="px-3 py-0.5 bg-black/10 rounded-full text-[9px] font-black uppercase tracking-widest whitespace-nowrap">Somengil MWS</span>
+                        <span id="modalRef" class="text-xs font-black uppercase opacity-70 whitespace-nowrap">REF: ---</span>
+                    </div>
+                    <h2 id="modalTitle" class="text-xl sm:text-2xl font-black uppercase tracking-tighter leading-tight break-words">CLIENTE</h2>
+                </div>
+                <div class="flex items-center gap-2 self-end sm:self-auto">
+                    <button onclick="closeModal()" class="p-3 bg-black/10 hover:bg-black/20 rounded-full text-white transition-all active:scale-90">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 sm:p-8 md:p-10 bg-slate-50/50 custom-scrollbar">
+                <div id="modalGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"></div>
+            </div>
+            <div class="p-4 sm:p-6 bg-white border-t flex justify-end">
+                <button onclick="closeModal()" class="w-full sm:w-auto px-10 py-4 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-slate-800 transition-all shadow-lg active:scale-95">Fechar Ficha</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE NOTAS -->
+    <div id="noteModalOverlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[250] hidden items-center justify-center p-4">
+        <div class="bg-white rounded-[1.5rem] p-8 max-w-md w-full shadow-2xl animate-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="p-3 bg-blue-50 text-blue-600 rounded-xl"><i data-lucide="message-square-plus" class="w-6 h-6"></i></div>
+                <h3 class="text-lg font-black uppercase tracking-tighter">Adicionar Informação Crítica</h3>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[9px] font-black uppercase text-slate-400 mb-1 block px-1">Nota / Observação</label>
+                    <textarea id="noteTextInput" rows="3" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all" placeholder="O que aconteceu de importante?"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[9px] font-black uppercase text-slate-400 mb-1 block px-1">Data</label>
+                        <input type="text" id="noteDateInput" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-black uppercase text-slate-400 mb-1 block px-1">Responsável (Quem)</label>
+                        <input type="text" id="noteAuthorInput" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all" placeholder="Nome">
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-2 w-full mt-8">
+                <button onclick="closeNoteModal()" class="flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase">Cancelar</button>
+                <button onclick="saveCriticalNote()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-blue-700">Guardar Nota</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PASSWORD MODAL -->
+    <div id="passwordOverlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] hidden items-center justify-center p-4">
+        <div class="bg-white rounded-[1.5rem] p-8 max-w-xs w-full shadow-2xl flex flex-col items-center animate-in">
+            <div class="p-4 bg-blue-50 text-blue-600 rounded-full mb-4"><i data-lucide="lock" class="w-8 h-8"></i></div>
+            <h3 class="text-lg font-black uppercase text-slate-900 mb-2 tracking-tighter">Acesso Restrito</h3>
+            <p class="text-[10px] font-bold text-slate-400 uppercase mb-6 text-center">Insira a password para editar</p>
+            <input type="password" id="passwordInput" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center font-black tracking-[0.5em] outline-none focus:ring-4 focus:ring-blue-100 transition-all" placeholder="••••">
+            <div id="passwordError" class="hidden text-[9px] text-red-500 font-black uppercase mt-2">Incorreta</div>
+            <div class="flex gap-2 w-full mt-8">
+                <button onclick="closePasswordModal()" class="flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase">Cancelar</button>
+                <button onclick="checkPassword()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-blue-700">Entrar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="fixed bottom-2 right-4 text-[8px] font-bold text-slate-300 pointer-events-none z-[100] uppercase tracking-widest">
+        MOD_DEN_02_01
+    </div>
+
+    <script>
+        const GOOGLE_SHEET_ID = '1M8smTePsPhRsnv5T0EVMQxk9qh5bp3BABiAVs7CNb4Q';
+
+        /* Armazenamento local à prova de falhas.
+           Em iframes com origem opaca (ex.: Blob) ou com cookies/armazenamento
+           bloqueado, o acesso a localStorage lança erro. Estas funções evitam
+           que isso quebre o carregamento dos dados — as edições locais são
+           apenas um extra, não são essenciais para mostrar os dados ao vivo. */
+        const safeStore = {
+            get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+            set(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* ignora */ } }
+        };
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby-sOyV-0wIft-y8OKPKdciOQRhyYRx5viv99MYIkxkVnL9DI0ljxtD4e2PKtJawk5R/exec'; 
+
+        const _P_AUTH_HASH = "TVdTMjAyNg=="; 
+
+        const STATUS_MAP = { "STOCK SOMENGIL": "stock", "BUFFER": "buffer", "EM PRODUÇÃO": "prod", "EM TRÂNSITO": "transit", "EM INSTALAÇÃO": "in_install", "INSTALADA": "installed" };
+        const STATUS_ICONS = { "STOCK SOMENGIL": "package", "BUFFER": "layers", "EM PRODUÇÃO": "activity", "EM TRÂNSITO": "send", "EM INSTALAÇÃO": "wrench", "INSTALADA": "check-circle-2" };
+        const EQUIPMENT_TYPES = ["MWS200", "MWS300", "MWS500", "MWS700", "MWS715", "CARROS", "OUTROS"];
+
+        let installations = [];
+        let state = { 
+            search: '', 
+            statusFilters: [], 
+            yearFilters: [], 
+            equipmentFilters: [], 
+            sortMode: 'delay_first', 
+            isAuthorized: false, 
+            selectedId: null,
+            filtersVisible: false
+        };
+        let hasAppliedInitialYearDefault = false;
+        let modelChartInstance = null;
+
+        const hasValue = (val) => {
+            if (val === undefined || val === null) return false;
+            const v = val.toString().trim().toLowerCase();
+            return v !== "" && v !== "-" && v !== "0" && v !== "n/a" && v !== "na" && !v.includes("não") && v !== "null";
+        };
+
+        const parseDate = (s) => {
+            if (!hasValue(s)) return null;
+            const ddmmaaaaMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if (ddmmaaaaMatch) return new Date(ddmmaaaaMatch[3], ddmmaaaaMatch[2] - 1, ddmmaaaaMatch[1]);
+            const gvizMatch = s.match(/Date\((\d{4}),\s*(\d+),\s*(\d+)\)/);
+            if (gvizMatch) return new Date(gvizMatch[1], parseInt(gvizMatch[2]), parseInt(gvizMatch[3]));
+            const d = new Date(s);
+            return isNaN(d.getTime()) ? null : d;
+        };
+
+        const formatData = (val) => {
+            const d = parseDate(val);
+            if (!d) return val;
+            return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+        };
+
+        const getEquipmentType = (modelo) => {
+            const m = (modelo || "").toUpperCase();
+            if (m.includes("MWS200")) return "MWS200";
+            if (m.includes("MWS300")) return "MWS300";
+            if (m.includes("MWS500")) return "MWS500";
+            if (m.includes("MWS700")) return "MWS700";
+            if (m.includes("MWS715")) return "MWS715";
+            if (m.includes("CARRO")) return "CARROS";
+            return "OUTROS";
+        };
+
+        const getStatus = (inst) => {
+            const hasProd = hasValue(inst["DATA INICIO PRODUÇÃO"]);
+            const hasPack = hasValue(inst["DATA EMBALAGEM"]);
+            const hasShip = hasValue(inst["DATA EXPEDIÇÃO (Primeira)"]);
+            const hasInst = hasValue(inst["DATA INSTALAÇÃO"]);
+            const hasTarget = hasValue(inst["DATA PRETENDIDA"]);
+            const statusSheet = (inst.STATUS || "").toUpperCase();
+            const targetDate = parseDate(inst["DATA PRETENDIDA"]);
+            const shipDate = parseDate(inst["DATA EXPEDIÇÃO (Primeira)"]);
+            const today = new Date();
+            let isLate = false;
+            if (hasTarget && targetDate) {
+                if (!hasShip) { if (today > targetDate) isLate = true; }
+                else if (shipDate) { if (shipDate > targetDate) isLate = true; }
+            }
+            if (hasInst) return { label: "INSTALADA", color: "bg-emerald-900 text-white", weight: 6, isLate: isLate, darkBg: true };
+            if (hasShip && !hasInst) {
+                const isWork = statusSheet === "EM INSTALAÇÃO";
+                return { label: isWork ? "EM INSTALAÇÃO" : "EM TRÂNSITO", color: isWork ? "bg-sky-400 text-sky-950" : "bg-yellow-400 text-yellow-950", weight: isWork ? 3 : 4, isLate: isLate, darkBg: false, isYellowCard: true };
+            }
+            if (hasProd && hasPack && !hasShip) return { label: "STOCK SOMENGIL", color: "bg-blue-600 text-white", weight: 0, isLate: isLate, darkBg: true };
+            if (hasProd && !hasPack && !hasShip) return { label: "EM PRODUÇÃO", color: "bg-green-100 text-green-800", weight: 2, isLate: isLate, darkBg: false };
+            return { label: "BUFFER", color: "bg-white text-slate-900 border-slate-200", weight: 1, isLate: isLate, darkBg: false };
+        };
+
+        function toggleFilters() {
+            state.filtersVisible = !state.filtersVisible;
+            const filterSec = document.getElementById('filterSection');
+            const toggleBtn = document.getElementById('toggleFiltersBtn');
+            if (state.filtersVisible) {
+                filterSec.classList.remove('is-collapsed');
+                toggleBtn.classList.add('text-white', 'bg-blue-600/20', 'border-blue-500/50');
+            } else {
+                filterSec.classList.add('is-collapsed');
+                toggleBtn.classList.remove('text-white', 'bg-blue-600/20', 'border-blue-500/50');
+            }
+        }
+
+        function parseNotes(obsString) {
+            if (!hasValue(obsString)) return [];
+            return obsString.split(' || ').map(noteStr => {
+                const match = noteStr.match(/^\[(.*?)\](?:\[(R)\])?\s*(.*?):\s*(.*)$/);
+                if (match) return { date: match[1], resolved: match[2] === 'R', author: match[3], text: match[4] };
+                return { date: '---', resolved: false, author: '---', text: noteStr };
+            });
+        }
+
+        function serializeNotes(notesArray) {
+            return notesArray.map(n => `[${n.date}]${n.resolved ? '[R]' : ''} ${n.author}: ${n.text}`).join(' || ');
+        }
+
+        function updateModelChart(data) {
+            const canvas = document.getElementById('modelChart');
+            if (!canvas) return;
+            const counts = {};
+            data.forEach(i => { const type = getEquipmentType(i.MODELO); counts[type] = (counts[type] || 0) + 1; });
+            const labels = Object.keys(counts);
+            // Corrigido para a cor solicitada #a8a7a7 em OUTROS
+            const colorMap = { "MWS200": '#5FA8D3', "MWS300": '#7BC6A4', "MWS500": '#F2C57C', "MWS700": '#E28F83', "MWS715": '#B8C0CC', "CARROS": '#7a7373', "OUTROS": '#a8a7a7' };
+            const values = labels.map(l => counts[l]);
+            const colors = labels.map(l => colorMap[l] || '#CBD5E1');
+            const ctx = canvas.getContext('2d');
+            if (modelChartInstance) {
+                modelChartInstance.data.labels = labels;
+                modelChartInstance.data.datasets[0].data = values;
+                modelChartInstance.data.datasets[0].backgroundColor = colors;
+                modelChartInstance.update();
+            } else {
+                modelChartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0, hoverOffset: 4 }] },
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { display: false }, tooltip: { enabled: true, bodyFont: { size: 9, weight: 'bold' }, backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 8, displayColors: false } } }
+                });
+            }
+            document.getElementById('totalVisibleCount').innerText = `${data.length} Un.`;
+        }
+
+        async function fetchData() {
+            const btn = document.getElementById('refreshBtn');
+            if(btn) btn.classList.add('animate-spin');
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json`;
+                const response = await fetch(url);
+                const text = await response.text();
+                const json = JSON.parse(text.substring(text.indexOf("(") + 1, text.lastIndexOf(")")));
+                const rows = json.table.rows;
+                installations = rows.map((row) => {
+                    const getRaw = (i) => row.c[i]?.v?.toString() || "";
+                    const getV = (i) => { const r = getRaw(i); return r.includes("Date(") ? formatData(r) : r; };
+                    const base = { 
+                        "NÚMERO": getRaw(0), "SÉRIE 1": getRaw(1), "SÉRIE 2": getRaw(2), "ORD. PROD.": getRaw(3), 
+                        "ENC. CLI.": getRaw(4), "DATA ENC.": getV(5), "DATA PRETENDIDA": getV(6), 
+                        "CLIENTE": getRaw(7), "PAÍS": getRaw(8), "IDIOMA": getRaw(9), "COMERCIAL": getRaw(10), 
+                        "VENDA": getRaw(11), "MODELO": getRaw(12), "LOTE": getRaw(13), "AQUECIMENTO": getRaw(14), 
+                        "VOLTAGEM": getRaw(15), "TIPO": getRaw(16), "NOTAS 1": getRaw(17), "DETERGENTES": getRaw(18), 
+                        "DATA ENTREGA Q E": getV(19), "DATA INICIO PRODUÇÃO": getV(20), "DATA EMBALAGEM": getV(21), 
+                        "DATA EXPEDIÇÃO (Primeira)": getV(22), "VARIADOR": getRaw(23), "BOMBA LAVAGEM": getRaw(24), 
+                        "BOMBA ENXAGUAMENTO": getRaw(25), "CORTE GERAL": getRaw(26), "TRANSFORMADOR": getRaw(27), 
+                        "QUADRO ELETRICO": getRaw(28), "ARRANCADOR": getRaw(29), "BASE RELÉ": getRaw(30), 
+                        "RELÉ": getRaw(31), "RELÉ NIVEL": getRaw(32), "CONSOLA": getRaw(33), "REV. CONSOLA": getRaw(34), 
+                        "PLC": getRaw(35), "REV. PLC": getRaw(36), "EWON": getRaw(37), "REV_CHASSIS": getRaw(38), 
+                        "NOTAS 2": getRaw(39), "DATA INSTALAÇÃO": getV(40), "INSTALADOR": getRaw(41), 
+                        "INFO DRIVE": getRaw(42), "STATUS": getRaw(43), "SATEVO": getRaw(44), 
+                        "Numero Instalação": getRaw(45), "Técnico Responsável": getRaw(46),
+                        "OBSERVAÇÕES": getRaw(48)
+                    };
+                    const edits = JSON.parse(safeStore.get(`edits_${base["NÚMERO"]}`)) || {};
+                    const merged = { ...base, ...edits };
+                    return { ...merged, _cachedStatus: getStatus(merged) };
+                }).filter(i => i["NÚMERO"] && i["NÚMERO"] !== "NÚMERO");
+
+                if (!hasAppliedInitialYearDefault && state.yearFilters.length === 0) {
+                    const availableYears = installations
+                        .map(i => parseDate(i["DATA PRETENDIDA"])?.getFullYear())
+                        .filter(Boolean);
+                    if (availableYears.length > 0) {
+                        const latestYear = Math.max(...availableYears);
+                        state.yearFilters = [latestYear.toString()];
+                    }
+                    hasAppliedInitialYearDefault = true;
+                }
+
+                renderFilters();
+                renderCards();
+            } catch (e) { console.error(e); }
+            if(btn) btn.classList.remove('animate-spin');
+            lucide.createIcons();
+        }
+
+        function renderFilters() {
+            const eqList = document.getElementById('equipmentFilterList');
+            if(!eqList) return;
+            eqList.innerHTML = `<button onclick="setEquipmentFilter('all')" class="somengil-filter-btn ${state.equipmentFilters.length === 0 ? 'active' : ''}">Todos</button>`;
+            EQUIPMENT_TYPES.forEach(type => { eqList.innerHTML += `<button onclick="setEquipmentFilter('${type}')" class="somengil-filter-btn ${state.equipmentFilters.includes(type) ? 'active' : ''}">${type}</button>`; });
+            const stList = document.getElementById('statusFilterList');
+            if(!stList) return;
+            stList.innerHTML = `<button onclick="setStatusFilter('all')" class="somengil-filter-btn ${state.statusFilters.length === 0 ? 'active' : ''}">Todos</button>`;
+            Object.entries(STATUS_MAP).forEach(([label, key]) => { stList.innerHTML += `<button onclick="setStatusFilter('${key}')" class="somengil-filter-btn ${state.statusFilters.includes(key) ? 'active' : ''}">${label}</button>`; });
+            const years = [...new Set(installations.map(i => parseDate(i["DATA PRETENDIDA"])?.getFullYear()))].filter(Boolean).sort();
+            const yrList = document.getElementById('yearFilterList');
+            if(!yrList) return;
+            yrList.innerHTML = `<button onclick="setYearFilter('all')" class="somengil-filter-btn ${state.yearFilters.length === 0 ? 'active' : ''}">Todos</button>`;
+            years.forEach(yr => { yrList.innerHTML += `<button onclick="setYearFilter('${yr}')" class="somengil-filter-btn ${state.yearFilters.includes(yr.toString()) ? 'active' : ''}">${yr}</button>`; });
+        }
+
+        function renderCards() {
+            const container = document.getElementById('mainContainer'); 
+            if(!container) return;
+            container.innerHTML = '';
+            const filtered = installations.filter(i => {
+                const matchesSearch = (i.CLIENTE || '').toLowerCase().includes(state.search.toLowerCase()) || i["NÚMERO"].includes(state.search);
+                if (!matchesSearch) return false;
+                if (state.equipmentFilters.length > 0 && !state.equipmentFilters.includes(getEquipmentType(i.MODELO))) return false;
+                if (state.statusFilters.length > 0 && !state.statusFilters.includes(STATUS_MAP[i._cachedStatus.label])) return false;
+                if (state.yearFilters.length > 0 && !state.yearFilters.includes(parseDate(i["DATA PRETENDIDA"])?.getFullYear()?.toString())) return false;
+                return true;
+            });
+            updateModelChart(filtered);
+            const groups = {}; filtered.forEach(i => { const s = i._cachedStatus; if (!groups[s.label]) groups[s.label] = []; groups[s.label].push(i); });
+            const sortedGroups = Object.entries(groups).sort(([la, ia], [lb, ib]) => ia[0]._cachedStatus.weight - ib[0]._cachedStatus.weight);
+            if (sortedGroups.length === 0) { container.innerHTML = `<div class="py-20 text-center text-slate-300"><i data-lucide="database" class="w-12 h-12 mx-auto mb-4 opacity-20"></i><p class="font-black uppercase text-xs tracking-widest">Sem unidades planeadas</p></div>`; lucide.createIcons(); return; }
+            sortedGroups.forEach(([label, items]) => {
+                const conf = items[0]._cachedStatus;
+                items.sort((a,b) => a["NÚMERO"].localeCompare(b["NÚMERO"], undefined, {numeric: true}));
+                const groupHtml = `
+                    <section class="animate-in">
+                        <div class="flex items-center gap-3 mb-6 border-b border-slate-200 pb-4">
+                            <div class="p-2.5 rounded-xl ${conf.color} shadow-sm border border-black/5 flex-shrink-0"><i data-lucide="${STATUS_ICONS[label] || 'package'}" class="w-4 h-4"></i></div>
+                            <div class="min-w-0"><h2 class="text-xs font-black uppercase tracking-widest text-slate-900 truncate">${label}</h2><span class="text-[8px] font-bold text-slate-400 uppercase">${items.length} Unidades</span></div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-5">
+                            ${items.map(i => {
+                                const st = i._cachedStatus; 
+                                const hasNotes = parseNotes(i["OBSERVAÇÕES"]).filter(n => !n.resolved).length > 0;
+                                let alertClasses = st.isLate ? (st.isYellowCard ? "text-black stroke-[3]" : (st.darkBg ? "text-white" : "text-red-500")) : "";
+                                return `
+                                <div onclick="openModal('${i["NÚMERO"]}')" class="cursor-pointer border-2 p-5 rounded-[1.25rem] transition-all hover:shadow-xl hover:-translate-y-1 ${st.color} border-transparent flex flex-col h-full group relative overflow-hidden">
+                                    <div class="flex justify-between items-start mb-3 text-inherit opacity-60">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-[9px] font-black uppercase tracking-widest">ID ${i["NÚMERO"]}</span>
+                                            ${hasNotes ? `<div class="flex items-center justify-center w-5 h-5 bg-white rounded-md shadow-sm border border-slate-100 animate-bounce-subtle"><i data-lucide="message-square" class="w-3 h-3 text-blue-600"></i></div>` : ''}
+                                        </div>
+                                        ${st.isLate ? `<i data-lucide="alert-circle" class="w-3.5 h-3.5 ${alertClasses}"></i>` : ''}
+                                    </div>
+                                    <h3 class="font-black text-xs uppercase leading-tight mb-1 line-clamp-2">${i.CLIENTE || 'RESERVA'}</h3>
+                                    <p class="text-[10px] font-bold opacity-60 mb-5 italic line-clamp-1">${i.MODELO}</p>
+                                    <div class="mt-auto pt-3 border-t border-black/5 flex justify-between items-center text-[8px] font-black uppercase">
+                                        <span class="truncate mr-2">${i.PAÍS || '-'}</span>
+                                        <span class="bg-white/40 px-2 py-0.5 rounded-md border border-black/5 whitespace-nowrap">${i["SÉRIE 1"] || '---'}</span>
+                                    </div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                    </section>`; container.insertAdjacentHTML('beforeend', groupHtml);
+            });
+            lucide.createIcons();
+        }
+
+        async function toggleNoteStatus(idx) {
+            const inst = installations.find(i => i["NÚMERO"] === state.selectedId);
+            if (!inst) return;
+            const currentNotes = parseNotes(inst["OBSERVAÇÕES"]);
+            currentNotes[idx].resolved = !currentNotes[idx].resolved;
+            const serialized = serializeNotes(currentNotes);
+            if (await syncWithSheets(state.selectedId, serialized)) { inst["OBSERVAÇÕES"] = serialized; openModal(state.selectedId); renderCards(); }
+        }
+
+        function openModal(id) {
+            const inst = installations.find(i => i["NÚMERO"] === id); if (!inst) return;
+            state.selectedId = id; const st = inst._cachedStatus;
+            const modal = document.getElementById('modalOverlay');
+            if(!modal) return;
+            const header = document.getElementById('modalHeader');
+            if(header) header.className = `p-6 md:p-8 flex flex-col sm:flex-row justify-between items-start sm:items-center text-white ${st.color} border-b border-black/5 gap-4`;
+            const ref = document.getElementById('modalRef'); if(ref) ref.innerText = `REF: ${inst["NÚMERO"]}`;
+            const title = document.getElementById('modalTitle'); if(title) title.innerText = inst.CLIENTE || 'RESERVA';
+            const grid = document.getElementById('modalGrid'); if(!grid) return;
+            grid.innerHTML = '';
+            const allNotes = parseNotes(inst["OBSERVAÇÕES"]);
+            grid.insertAdjacentHTML('beforeend', `
+                <div class="bg-yellow-50 border border-yellow-200 rounded-[1.5rem] p-6 shadow-sm col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4 border-l-4 border-l-orange-400 animate-in">
+                    <div class="flex items-center justify-between mb-5 border-b border-yellow-100 pb-3">
+                        <div class="flex items-center gap-3"><i data-lucide="alert-triangle" class="w-4 h-4 text-orange-500"></i><h4 class="text-[10px] font-black uppercase tracking-widest text-orange-600">Informações Críticas</h4></div>
+                        <button onclick="showNoteModal()" class="px-3 py-1.5 bg-orange-100 text-orange-700 text-[8px] font-black uppercase rounded-lg hover:bg-orange-200 transition-all flex items-center gap-1"><i data-lucide="plus" class="w-3 h-3"></i> Adicionar Nota</button>
+                    </div>
+                    <div class="space-y-3">
+                        ${allNotes.length === 0 ? `<p class="text-[10px] text-orange-300 font-bold uppercase italic text-center py-4">Nenhuma nota crítica registada.</p>` : allNotes.map((note, idx) => `
+                            <div class="bg-white p-4 rounded-xl border border-yellow-100 relative group shadow-sm flex gap-4 items-center">
+                                <button onclick="toggleNoteStatus(${idx})" class="p-2 rounded-lg transition-all ${note.resolved ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300 hover:text-slate-400'} cursor-pointer"><i data-lucide="${note.resolved ? 'check-circle-2' : 'circle'}" class="w-5 h-5"></i></button>
+                                <div class="flex-1 min-w-0">
+                                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                                        <div class="sm:col-span-8"><label class="text-[7px] font-black uppercase text-orange-300">Observação</label><p class="text-[11px] font-bold ${note.resolved ? 'text-slate-400 line-through' : 'text-slate-800'} leading-relaxed truncate group-hover:whitespace-normal group-hover:break-words">${note.text}</p></div>
+                                        <div class="sm:col-span-2"><label class="text-[7px] font-black uppercase text-orange-300">Data</label><p class="text-[11px] font-bold text-slate-600 whitespace-nowrap">${note.date}</p></div>
+                                        <div class="sm:col-span-2"><label class="text-[7px] font-black uppercase text-orange-300">Quem</label><p class="text-[11px] font-bold text-slate-600 truncate">${note.author}</p></div>
+                                    </div>
+                                </div>
+                                <button onclick="deleteCriticalNote(${idx})" class="p-2 text-slate-200 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            </div>`).join('')}
+                    </div>
+                </div>`);
+            const sections = [
+                { title: "Logística & Prazos", icon: "calendar", fields: ["DATA ENC.", "DATA PRETENDIDA", "DATA ENTREGA Q E", "DATA INICIO PRODUÇÃO", "DATA EMBALAGEM", "DATA EXPEDIÇÃO (Primeira)", "DATA INSTALAÇÃO", "STATUS"] },
+                { title: "Comercial", icon: "user", fields: ["NÚMERO", "PAÍS", "IDIOMA", "COMERCIAL", "VENDA", "ENC. CLI.", "Técnico Responsável"] },
+                { title: "Especificações", icon: "settings", fields: ["SÉRIE 1", "SÉRIE 2", "ORD. PROD.", "MODELO", "LOTE", "AQUECIMENTO", "VOLTAGEM", "TIPO", "DETERGENTES", "SATEVO"] },
+                { title: "Hardware", icon: "cpu", fields: ["VARIADOR", "BOMBA LAVAGEM", "BOMBA ENXAGUAMENTO", "CORTE GERAL", "TRANSFORMADOR", "QUADRO ELETRICO", "ARRANCADOR", "BASE RELÉ", "RELÉ", "RELÉ NIVEL", "INFO DRIVE"] },
+                { title: "Sistemas & Rev", icon: "zap", fields: ["CONSOLA", "REV. CONSOLA", "PLC", "REV. PLC", "EWON", "REV_CHASSIS"] },
+                { title: "Notas Internas", icon: "file-text", fields: ["NOTAS 1", "NOTAS 2", "INSTALADOR", "Numero Instalação"] }
+            ];
+            sections.forEach(s => {
+                grid.insertAdjacentHTML('beforeend', `
+                    <div class="bg-white border border-slate-100 rounded-[1.5rem] p-6 shadow-sm">
+                        <div class="flex items-center gap-3 mb-5 border-b border-slate-50 pb-3"><i data-lucide="${s.icon}" class="w-4 h-4 text-blue-500"></i><h4 class="text-[10px] font-black uppercase tracking-widest text-slate-400">${s.title}</h4></div>
+                        <div class="space-y-4">${s.fields.map(f => {
+                            const val = inst[f]; const empty = !hasValue(val);
+                            return `<div class="flex flex-col group"><label class="text-[8px] font-black uppercase text-slate-400 mb-1 px-1">${f}</label><div onclick="editField('${f}')" class="text-[11px] font-bold px-3 py-2 rounded-lg border transition-all ${empty ? 'bg-slate-50 border-slate-50 text-slate-300 italic' : 'bg-white border-slate-100 text-slate-900'} ${state.isAuthorized ? 'hover:border-blue-300 cursor-pointer' : ''}">${empty ? '---' : val}</div></div>`;
+                        }).join('')}</div>
+                    </div>`);
+            });
+            modal.style.display = 'flex'; document.body.classList.add('modal-open'); lucide.createIcons();
+        }
+
+        function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; document.body.classList.remove('modal-open'); }
+        function showNoteModal() {
+            const today = new Date();
+            const inputTxt = document.getElementById('noteTextInput'); const inputDate = document.getElementById('noteDateInput');
+            const inputAuthor = document.getElementById('noteAuthorInput'); const overlay = document.getElementById('noteModalOverlay');
+            if(inputTxt) inputTxt.value = '';
+            if(inputDate) inputDate.value = `${today.getDate().toString().padStart(2,'0')}/${(today.getMonth()+1).toString().padStart(2,'0')}/${today.getFullYear()}`;
+            if(inputAuthor) inputAuthor.value = '';
+            if(overlay) overlay.style.display = 'flex';
+        }
+        function closeNoteModal() { document.getElementById('noteModalOverlay').style.display = 'none'; }
+        async function syncWithSheets(id, observacoes) {
+            if (!APPS_SCRIPT_URL) return true;
+            const loader = document.getElementById('globalLoader'); if(loader) loader.style.display = 'flex';
+            try {
+                const response = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: JSON.stringify({ id, observacoes }) });
+                const result = await response.json(); if (!result.success) throw new Error(result.error);
+                return true;
+            } catch (error) { alert("Erro ao gravar: " + error.message); return false; }
+            finally { if(loader) loader.style.display = 'none'; }
+        }
+        async function saveCriticalNote() {
+            const id = state.selectedId; const nota = document.getElementById('noteTextInput')?.value.trim();
+            const data = document.getElementById('noteDateInput')?.value.trim(); const quem = document.getElementById('noteAuthorInput')?.value.trim();
+            if (!nota || !data || !quem) { alert("Preencha todos os campos."); return; }
+            const inst = installations.find(i => i["NÚMERO"] === id); if(!inst) return;
+            const currentNotes = parseNotes(inst["OBSERVAÇÕES"]); currentNotes.push({ text: nota, date: data, author: quem, resolved: false });
+            const serialized = serializeNotes(currentNotes);
+            if (await syncWithSheets(id, serialized)) { inst["OBSERVAÇÕES"] = serialized; closeNoteModal(); openModal(id); renderCards(); }
+        }
+        async function deleteCriticalNote(idx) {
+            const id = state.selectedId; const inst = installations.find(i => i["NÚMERO"] === id); if(!inst) return;
+            const currentNotes = parseNotes(inst["OBSERVAÇÕES"]); currentNotes.splice(idx, 1);
+            const serialized = serializeNotes(currentNotes);
+            if (await syncWithSheets(id, serialized)) { inst["OBSERVAÇÕES"] = serialized; openModal(id); renderCards(); }
+        }
+        function editField(field) {
+            if (!state.isAuthorized) { document.getElementById('passwordOverlay').style.display = 'flex'; return; }
+            const inst = installations.find(i => i["NÚMERO"] === state.selectedId); if(!inst) return;
+            const val = prompt(`Novo valor para ${field}:`, inst[field]);
+            if (val !== null) {
+                const final = field.startsWith("DATA") ? formatData(val) : val;
+                const edits = JSON.parse(safeStore.get(`edits_${state.selectedId}`)) || {}; edits[field] = final; 
+                safeStore.set(`edits_${state.selectedId}`, JSON.stringify(edits));
+                inst[field] = final; inst._cachedStatus = getStatus(inst);
+                openModal(state.selectedId); renderCards();
+            }
+        }
+        function toggleAuth() { if (state.isAuthorized) { state.isAuthorized = false; updateAuthUI(); } else { document.getElementById('passwordOverlay').style.display = 'flex'; } }
+        function checkPassword() { 
+            const input = document.getElementById('passwordInput');
+            if (input && btoa(input.value) === _P_AUTH_HASH) { state.isAuthorized = true; closePasswordModal(); updateAuthUI(); } 
+            else { const err = document.getElementById('passwordError'); if(err) err.classList.remove('hidden'); setTimeout(() => { if(err) err.classList.add('hidden'); }, 2000); } 
+        }
+        function closePasswordModal() { document.getElementById('passwordOverlay').style.display = 'none'; document.getElementById('passwordInput').value = ''; }
+        function updateAuthUI() {
+            const btn = document.getElementById('authBtn'); const icon = document.getElementById('authIcon'); const text = document.getElementById('authText');
+            if (state.isAuthorized) { btn.className = "flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-100 whitespace-nowrap"; icon.setAttribute('data-lucide', 'unlock'); text.innerText = "Modo Edição"; }
+            else { btn.className = "flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-slate-50 text-slate-400 border border-slate-200 whitespace-nowrap"; icon.setAttribute('data-lucide', 'lock'); text.innerText = "Leitura"; }
+            lucide.createIcons(); if (state.selectedId) openModal(state.selectedId);
+        }
+        function setEquipmentFilter(key) { if (key === 'all') state.equipmentFilters = []; else { const idx = state.equipmentFilters.indexOf(key); if (idx > -1) state.equipmentFilters.splice(idx, 1); else state.equipmentFilters.push(key); } renderFilters(); renderCards(); }
+        function setStatusFilter(key) { if (key === 'all') state.statusFilters = []; else { const idx = state.statusFilters.indexOf(key); if (idx > -1) state.statusFilters.splice(idx, 1); else state.statusFilters.push(key); } renderFilters(); renderCards(); }
+        function setYearFilter(year) { if (year === 'all') state.yearFilters = []; else { const idx = state.yearFilters.indexOf(year); if (idx > -1) state.yearFilters.splice(idx, 1); else state.yearFilters.push(year); } renderFilters(); renderCards(); }
+        const searchInputEl = document.getElementById('searchInput');
+        let hasManualSearchInput = false;
+
+        function clearUnwantedSearchAutofill() {
+            if (!searchInputEl || hasManualSearchInput) return;
+            const currentValue = (searchInputEl.value || '').trim();
+            if (!currentValue) return;
+            const looksLikeInjectedDefault = currentValue.toUpperCase() === 'DSQA' || !state.search;
+            if (looksLikeInjectedDefault) {
+                searchInputEl.value = '';
+                state.search = '';
+                renderCards();
+            }
+        }
+
+        searchInputEl?.addEventListener('focus', () => {
+            searchInputEl.readOnly = false;
+        });
+
+        searchInputEl?.addEventListener('pointerdown', () => {
+            searchInputEl.readOnly = false;
+        });
+
+        searchInputEl?.addEventListener('input', (e) => {
+            if (e.isTrusted) {
+                hasManualSearchInput = true;
+                if (searchInputEl.readOnly) searchInputEl.readOnly = false;
+            }
+
+            if (!hasManualSearchInput && (e.target.value || '').trim().toUpperCase() === 'DSQA') {
+                e.target.value = '';
+                state.search = '';
+                renderCards();
+                return;
+            }
+
+            state.search = e.target.value;
+            renderCards();
+        });
+
+        // Alguns browsers preenchem inputs fora do ciclo normal de load.
+        window.addEventListener('load', () => {
+            setTimeout(clearUnwantedSearchAutofill, 150);
+            setTimeout(clearUnwantedSearchAutofill, 1200);
+            setTimeout(clearUnwantedSearchAutofill, 3500);
+
+            // Reforço temporário para preenchimentos atrasados.
+            let guardRuns = 0;
+            const guard = setInterval(() => {
+                clearUnwantedSearchAutofill();
+                guardRuns += 1;
+                if (hasManualSearchInput || guardRuns >= 40) clearInterval(guard);
+            }, 500);
+        });
+        window.onload = fetchData;
+    <\/script>
+</body>
+</html>
+
+</script>
+
+<script>
+/* ================================================================= */
+/*  DADOS  (instantâneo do ficheiro "Projeto_MultiDash.xlsx")         */
+/*  >>> ATUALIZA AQUI os dados, ou liga a uma fonte em tempo real <<< */
+/*      (Google Sheets / API), à semelhança do dashboard do mapa.     */
+/* ================================================================= */
+
+// --- MONTAGEM: 7 fases por máquina (valores 0..1) ---
+const FASES_MONTAGEM = ["Cuba","Estrut.","Interior","Envolv.","Á. Téc.","Testes","Embal."];
+const MONTAGEM = [
+    { cliente:"MULTIVAC A/S — Test Factory", modelo:"MWS500 SDS EXD DRD V3", pais:"DK", posto:1, pretendida:"15/05", fases:[0.90,0.28,1.00,0,0,0,0] },
+    { cliente:"EUROPAN SA — Mexipan 2026",   modelo:"MWS500 SDS DRD QLD V3", pais:"MX", posto:3, pretendida:"20/05", fases:[0.95,0.11,0.56,0,0,0,0] },
+    { cliente:"ABRILE S.R.L.",               modelo:"MWS300 SDS QLD V3",     pais:"IT", posto:2, pretendida:"26/05", fases:[0.95,0.18,1.00,0,0,0,0] },
+    { cliente:"BAKON USA — Drunken Cookies",  modelo:"MWS300 SDS DRD QLD V3", pais:"US", posto:5, pretendida:"26/05", fases:[0,0,0,0,0,0,0] },
+    { cliente:"BAKON USA — Drunken Cookies 2",modelo:"MWS500 SDS DRD QLD V3", pais:"US", posto:1, pretendida:"26/05", fases:[0.90,0.28,1.00,0,0,0,0] },
+    { cliente:"DA RE S.P.A. — Bibanesi",      modelo:"MWS500 SDS DRD QLD V3", pais:"IT", posto:4, pretendida:"27/05", fases:[0,0,0,0,0,0,0] },
+];
+
+// --- SOLDADURA: cada lote com 3 fases (Laser / Serralharia / Soldadura) ---
+//  estado: "done" | "active" | "pending"
+const SOLDADURA = [
+    { lote:"MWS715 SDS — 28L",      qty:3, pretendida:"29/05", laser:"done",    serr:"done",   sold:"done"    },
+    { lote:"SPARE PARTS",           qty:1, pretendida:"01/06", laser:"pending", serr:"pending",sold:"done"    },
+    { lote:"MWS700 SDS EXD — 48L1", qty:1, pretendida:"02/06", laser:"done",    serr:"done",   sold:"active"  },
+    { lote:"MWS300 SDS — 67L",      qty:3, pretendida:"08/06", laser:"done",    serr:"done",   sold:"active"  },
+    { lote:"MWS700 SDS — 49L",      qty:3, pretendida:"15/06", laser:"done",    serr:"done",   sold:"pending" },
+    { lote:"MWS715 SDS — 29L",      qty:3, pretendida:"22/06", laser:"done",    serr:"pending",sold:"pending" },
+    { lote:"MWS500 SDS — 88L",      qty:3, pretendida:"26/06", laser:"done",    serr:"active", sold:"pending" },
+];
+
+// --- TROLLEYS: encomendas + fornecedor ---
+const TROLLEYS = [
+    { cliente:"Modelo Continente — Guimarães", modelo:"Carros",                       qty:1, pretendida:"22/10", fornecedores:[{n:"VSA",q:1}],                       anulada:false },
+    { cliente:"Multivac Australia — ICC Sidney",modelo:"MWS500 SDS DRD QLD",          qty:2, pretendida:"21/10", fornecedores:[{n:"SPB",q:1},{n:"X-INOX",q:1}],      anulada:false },
+    { cliente:"Modelo Continente — Viseu",     modelo:"Carros",                       qty:1, pretendida:"14/10", fornecedores:[{n:"VSA",q:1}],                       anulada:false },
+    { cliente:"Nestradé — Maiupi",             modelo:"MWS700 SDS EXD DRD",           qty:3, pretendida:"10/10", fornecedores:[{n:"SOMENGIL",q:3}],                  anulada:false },
+    { cliente:"Modelo Continente — Paredes",   modelo:"MWS200 SDS DRD QLD AWT ACS",   qty:1, pretendida:"11/07", fornecedores:[{n:"VSA",q:1}],                       anulada:false },
+    { cliente:"Nestlé Suisse",                 modelo:"Carros",                       qty:1, pretendida:"26/08", fornecedores:[{n:"VSA",q:1}],                       anulada:true  },
+];
+
+// --- CONTINUIDADE PE: pontos de terac 24 (val ≤ ref => conforme) ---
+//  Snapshot: todos os 24 pontos a 0.1 Ω (ref 0.2 Ω) => 100% conforme.
+const CONTINUIDADE = {
+    estrutura:   { ok:5, total:5 },
+    motores:     { ok:4, total:4 },
+    resistencias:{ ok:6, total:6 },
+    valvulas:    { ok:9, total:9 },
+    media:       0.10,   // Ω
+};
+const CAT_LABELS = { estrutura:"Estrutura", motores:"Motores", resistencias:"Resistências", valvulas:"Válvulas" };
+
+/* ================================================================= */
+/*  RENDER — MONTAGEM                                                 */
+/* ================================================================= */
+function pctColor(p){ return p >= 0.85 ? 'var(--ok)' : p >= 0.4 ? 'var(--warn)' : (p>0?'var(--acc-1)':'var(--idle)'); }
+
+function renderMontagem(){
+    const overall = m => m.fases.reduce((a,b)=>a+b,0)/m.fases.length;
+    const avg = MONTAGEM.reduce((a,m)=>a+overall(m),0)/MONTAGEM.length;
+    const emCurso = MONTAGEM.filter(m=>overall(m)>0 && overall(m)<1).length;
+
+    document.getElementById('montagemBadge').textContent = MONTAGEM.length + " Máq.";
+    document.getElementById('montagemKpis').innerHTML = `
+        <div class="kpi"><div class="v">${MONTAGEM.length}</div><div class="l">Em Montagem</div></div>
+        <div class="kpi"><div class="v">${Math.round(avg*100)}%</div><div class="l">Progresso Médio</div></div>
+        <div class="kpi"><div class="v">${emCurso}</div><div class="l">Em Curso</div></div>`;
+
+    document.getElementById('montagemList').innerHTML = MONTAGEM.map(m => {
+        const p = overall(m);
+        return `
+        <div class="mach">
+            <div class="mach-top">
+                <div style="min-width:0;">
+                    <div class="name">${m.cliente}</div>
+                    <div class="model">${m.modelo} · ${m.pais}</div>
+                </div>
+                <div class="posto">P${m.posto}</div>
+                <div class="pct" style="color:${pctColor(p)}">${Math.round(p*100)}%</div>
+            </div>
+            <div class="bar"><i style="width:${Math.round(p*100)}%"></i></div>
+            <div class="phases">
+                ${m.fases.map((f,i)=>`
+                    <div class="phase">
+                        <div class="seg" style="background:${f>0?pctColor(f):'rgba(255,255,255,0.07)'};opacity:${f>0?(0.45+0.55*f):1}"></div>
+                        <div class="lbl">${FASES_MONTAGEM[i]}</div>
+                    </div>`).join('')}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+/* ================================================================= */
+/*  RENDER — SOLDADURA                                                */
+/* ================================================================= */
+function renderSoldadura(){
+    const totalUnid = SOLDADURA.reduce((a,l)=>a+l.qty,0);
+    const concluidos = SOLDADURA.filter(l=>l.sold==='done').length;
+
+    document.getElementById('soldaduraBadge').textContent = SOLDADURA.length + " Lotes";
+    document.getElementById('soldaduraKpis').innerHTML = `
+        <div class="kpi"><div class="v">${SOLDADURA.length}</div><div class="l">Lotes</div></div>
+        <div class="kpi"><div class="v">${totalUnid}</div><div class="l">Unidades</div></div>
+        <div class="kpi"><div class="v ok-c">${concluidos}</div><div class="l">Concluídos</div></div>`;
+
+    const stepHtml = (st, lab) => `
+        <div class="step ${st}">
+            <div class="node"><i data-lucide="check"></i></div>
+            <div class="lab">${lab}</div>
+        </div>`;
+    const conn = (a,b) => `<div class="connector ${(a==='done'&&(b==='done'||b==='active'))?'done':''}"></div>`;
+
+    document.getElementById('soldaduraList').innerHTML = SOLDADURA.map(l => `
+        <div class="lot">
+            <div class="info">
+                <div class="l1">${l.lote}</div>
+                <div class="l2">${l.qty} un.</div>
+            </div>
+            <div class="stepper">
+                ${stepHtml(l.laser,'Laser')}
+                ${conn(l.laser,l.serr)}
+                ${stepHtml(l.serr,'Serralh.')}
+                ${conn(l.serr,l.sold)}
+                ${stepHtml(l.sold,'Soldad.')}
+            </div>
+            <div class="due">
+                <div class="dlab">Prazo</div>
+                <div class="dval">${l.pretendida}</div>
+            </div>
+        </div>`).join('');
+}
+
+/* ================================================================= */
+/*  RENDER — TROLLEYS                                                 */
+/* ================================================================= */
+function renderTrolleys(){
+    const ativos = TROLLEYS.filter(t=>!t.anulada);
+    const totalTrolleys = ativos.reduce((a,t)=>a+t.qty,0);
+    const anuladas = TROLLEYS.filter(t=>t.anulada).length;
+
+    document.getElementById('trolleysBadge').textContent = totalTrolleys + " Trolleys";
+    document.getElementById('trolleysKpis').innerHTML = `
+        <div class="kpi"><div class="v">${ativos.length}</div><div class="l">Encomendas</div></div>
+        <div class="kpi"><div class="v">${totalTrolleys}</div><div class="l">Trolleys</div></div>
+        <div class="kpi"><div class="v bad-c">${anuladas}</div><div class="l">Anuladas</div></div>`;
+
+    document.getElementById('trolleysList').innerHTML = TROLLEYS.map(t => `
+        <div class="trow ${t.anulada?'void':''}">
+            <div class="qty ${t.anulada?'void':''}">${t.qty}</div>
+            <div class="tinfo">
+                <div class="tc">${t.cliente}</div>
+                <div class="tm">${t.modelo}${t.anulada?' · ANULADA':''}</div>
+            </div>
+            <div class="sup">
+                ${t.fornecedores.map(f=>`<span class="${t.anulada?'void':''}">${f.n}${f.q>1?' ×'+f.q:''}</span>`).join('')}
+            </div>
+        </div>`).join('');
+}
+
+/* ================================================================= */
+/*  RENDER — CONTINUIDADE PE                                          */
+/* ================================================================= */
+let gaugeChart = null;
+function renderContinuidade(){
+    const cats = ['estrutura','motores','resistencias','valvulas'];
+    let total=0, ok=0;
+    cats.forEach(c=>{ total+=CONTINUIDADE[c].total; ok+=CONTINUIDADE[c].ok; });
+    const nok = total-ok;
+    const taxa = total>0 ? Math.round(ok/total*100) : 0;
+
+    document.getElementById('continuidadeBadge').textContent = taxa + "% OK";
+    document.getElementById('contTotal').textContent = total;
+    document.getElementById('contOk').textContent = ok;
+    document.getElementById('contNok').textContent = nok;
+    document.getElementById('contMedia').textContent = CONTINUIDADE.media.toFixed(2) + " Ω";
+    document.getElementById('gaugeVal').textContent = taxa + "%";
+    const gv = document.getElementById('gaugeVal');
+    gv.className = 'g-v ' + (taxa>=100?'ok-c':taxa>=80?'warn-c':'bad-c');
+
+    // Barras por categoria
+    document.getElementById('catList').innerHTML = cats.map(c => {
+        const d = CONTINUIDADE[c];
+        const p = d.total>0 ? d.ok/d.total : 0;
+        const col = p>=1 ? 'var(--ok)' : p>=0.7 ? 'var(--warn)' : 'var(--bad)';
+        return `
+        <div class="cat" style="margin-bottom:9px;">
+            <div class="crow">
+                <span class="cname">${CAT_LABELS[c]}</span>
+                <span class="cval">${d.ok}/${d.total} OK</span>
+            </div>
+            <div class="cbar"><i style="width:${Math.round(p*100)}%;background:${col}"></i></div>
+        </div>`;
+    }).join('');
+
+    // Gauge (donut) de conformidade
+    const ctx = document.getElementById('gaugeChart').getContext('2d');
+    const color = taxa>=100 ? '#34D399' : taxa>=80 ? '#FBBF24' : '#F87171';
+    if (gaugeChart) gaugeChart.destroy();
+    gaugeChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            datasets: [{
+                data: [taxa, 100-taxa],
+                backgroundColor: [color, 'rgba(255,255,255,0.06)'],
+                borderWidth: 0,
+                circumference: 360,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            cutout: '78%',
+            plugins: { legend:{display:false}, tooltip:{enabled:false} },
+            animation: { animateRotate: true, duration: 900 },
+        }
+    });
+}
+
+/* ================================================================= */
+/*  RELÓGIO + ARRANQUE                                                */
+/* ================================================================= */
+function tick(){
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    document.getElementById('clockTime').textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+    const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    document.getElementById('clockDate').textContent =
+        `${dias[now.getDay()]} · ${pad(now.getDate())} ${meses[now.getMonth()]} ${now.getFullYear()}`;
+}
+
+/* ================================================================= */
+/*  CARREGAR O MAPA EMBEBIDO (Coluna 1)                              */
+/*  Usa srcdoc: o iframe herda a origem da página principal, logo o  */
+/*  fetch ao Google Sheets e o localStorage do mapa funcionam.       */
+/* ================================================================= */
+function loadMapa(){
+    try {
+        var raw = document.getElementById('mapaSource').textContent;
+        var htmlMapa = raw.replace(/<\\\/script>/g, '<\/script>');
+        document.getElementById('mapaFrame').srcdoc = htmlMapa;
+    } catch (e) { console.error('Falha ao carregar o mapa embebido:', e); }
+}
+
+function init(){
+    renderMontagem();
+    renderSoldadura();
+    renderTrolleys();
+    renderContinuidade();
+    tick();
+    loadMapa();
+    if (window.lucide) lucide.createIcons();
+}
+
+setInterval(tick, 1000);
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
