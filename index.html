@@ -1248,6 +1248,8 @@
 /*      (Google Sheets / API), à semelhança do dashboard do mapa.     */
 /* ================================================================= */
 
+const MAIN_GOOGLE_SHEET_ID = '13-0N_EZlgo36jH5xJNIXeT3pa2tunnu2DB47bQwpdpo';
+
 // --- MONTAGEM: 7 fases por máquina (valores 0..1) ---
 const FASES_MONTAGEM = ["Cuba","Estrut.","Interior","Envolv.","Á. Téc.","Testes","Embal."];
 const MONTAGEM = [
@@ -1272,14 +1274,82 @@ const SOLDADURA = [
 ];
 
 // --- TROLLEYS: encomendas + fornecedor ---
-const TROLLEYS = [
-    { cliente:"Modelo Continente — Guimarães", modelo:"Carros",                       qty:1, pretendida:"22/10", fornecedores:[{n:"VSA",q:1}],                       anulada:false },
-    { cliente:"Multivac Australia — ICC Sidney",modelo:"MWS500 SDS DRD QLD",          qty:2, pretendida:"21/10", fornecedores:[{n:"SPB",q:1},{n:"X-INOX",q:1}],      anulada:false },
-    { cliente:"Modelo Continente — Viseu",     modelo:"Carros",                       qty:1, pretendida:"14/10", fornecedores:[{n:"VSA",q:1}],                       anulada:false },
-    { cliente:"Nestradé — Maiupi",             modelo:"MWS700 SDS EXD DRD",           qty:3, pretendida:"10/10", fornecedores:[{n:"SOMENGIL",q:3}],                  anulada:false },
-    { cliente:"Modelo Continente — Paredes",   modelo:"MWS200 SDS DRD QLD AWT ACS",   qty:1, pretendida:"11/07", fornecedores:[{n:"VSA",q:1}],                       anulada:false },
-    { cliente:"Nestlé Suisse",                 modelo:"Carros",                       qty:1, pretendida:"26/08", fornecedores:[{n:"VSA",q:1}],                       anulada:true  },
-];
+let TROLLEYS = [];
+
+async function fetchTrolleysFromSheet(){
+    try {
+        const url = `https://docs.google.com/spreadsheets/d/${MAIN_GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=TROLLEYS`;
+        const response = await fetch(url);
+        const text = await response.text();
+        const json = JSON.parse(text.substring(text.indexOf("(") + 1, text.lastIndexOf(")")));
+        const rows = json?.table?.rows || [];
+
+        const getText = (cell) => {
+            if (!cell) return '';
+            if (cell.f !== undefined && cell.f !== null && String(cell.f).trim() !== '') return String(cell.f).trim();
+            if (cell.v === undefined || cell.v === null) return '';
+            return String(cell.v).trim();
+        };
+        const isRelevantStatus = (v) => {
+            const s = (v || '').toString().trim();
+            return s === 'Em curso' || s === 'Finalizado' || s === 'Anulada' || s === 'Anulado';
+        };
+
+        // Mapeamento fixo conforme cabecalho recebido:
+        // E CLIENTE, F MODELO, G MODELO, I DATA PRETENDIDA, M NUMERO TROLLEYS,
+        // N..X fornecedores, Z status.
+        const mapped = rows
+            .map((row) => {
+                const c = row?.c || [];
+                const statusText = getText(c[25]); // Coluna Z
+                const modeloF = getText(c[5]);
+                const modeloG = getText(c[6]);
+                const qty = parseInt(getText(c[12]).replace(/[^0-9]/g, ''), 10) || 0;
+
+                const supplierCols = [
+                    { n: 'VSA', idx: 13 },
+                    { n: 'DAYLLOT', idx: 14 },
+                    { n: 'MATERIALLS', idx: 15 },
+                    { n: 'SPB', idx: 16 },
+                    { n: 'SOMENGIL', idx: 17 },
+                    { n: 'B2B', idx: 18 },
+                    { n: 'YTX', idx: 19 },
+                    { n: 'X-INOX', idx: 20 },
+                    { n: 'NEIVA', idx: 21 },
+                    { n: 'MOVMETAL', idx: 22 },
+                    { n: 'SOMENGIL', idx: 23 }
+                ];
+                const fornecedores = supplierCols
+                    .map(s => {
+                        const raw = getText(c[s.idx]);
+                        const q = parseInt(raw.replace(/[^0-9]/g, ''), 10);
+                        return Number.isFinite(q) && q > 0 ? { n: s.n, q } : null;
+                    })
+                    .filter(Boolean);
+
+                return {
+                    cliente: getText(c[4]) || 'Sem cliente',
+                    modelo: modeloF || modeloG || 'Sem modelo',
+                    qty,
+                    pretendida: getText(c[8]),
+                    fornecedores,
+                    anulada: /anulad/i.test(statusText),
+                    estado: statusText
+                };
+            })
+            .filter(t => t.qty > 0 && isRelevantStatus(t.estado));
+
+        TROLLEYS = mapped;
+    } catch (err) {
+        console.error('Falha ao carregar TROLLEYS da Sheet:', err);
+    }
+}
+
+async function refreshTrolleysFromSheet(){
+    await fetchTrolleysFromSheet();
+    renderTrolleys();
+    if (window.lucide) lucide.createIcons();
+}
 
 // --- CONTINUIDADE PE: pontos de terac 24 (val ≤ ref => conforme) ---
 //  Snapshot: todos os 24 pontos a 0.1 Ω (ref 0.2 Ω) => 100% conforme.
@@ -1376,17 +1446,25 @@ function renderSoldadura(){
 /*  RENDER — TROLLEYS                                                 */
 /* ================================================================= */
 function renderTrolleys(){
-    const ativos = TROLLEYS.filter(t=>!t.anulada);
-    const totalTrolleys = ativos.reduce((a,t)=>a+t.qty,0);
-    const anuladas = TROLLEYS.filter(t=>t.anulada).length;
+    const normStatus = (v) => (v || '').toString().trim();
+    const emCurso = TROLLEYS.filter(t => normStatus(t.estado) === 'Em curso');
+    const finalizado = TROLLEYS.filter(t => normStatus(t.estado) === 'Finalizado');
+    const anuladas = TROLLEYS.filter(t => {
+        const s = normStatus(t.estado);
+        return s === 'Anulada' || s === 'Anulado';
+    });
+
+    const totalEncomendasEmCurso = emCurso.length;
+    const totalTrolleys = [...emCurso, ...finalizado].reduce((a, t) => a + t.qty, 0);
+    const totalAnuladas = anuladas.length;
 
     document.getElementById('trolleysBadge').textContent = totalTrolleys + " Trolleys";
     document.getElementById('trolleysKpis').innerHTML = `
-        <div class="kpi"><div class="v">${ativos.length}</div><div class="l">Encomendas</div></div>
+        <div class="kpi"><div class="v">${totalEncomendasEmCurso}</div><div class="l">Encomendas</div></div>
         <div class="kpi"><div class="v">${totalTrolleys}</div><div class="l">Trolleys</div></div>
-        <div class="kpi"><div class="v bad-c">${anuladas}</div><div class="l">Anuladas</div></div>`;
+        <div class="kpi"><div class="v bad-c">${totalAnuladas}</div><div class="l">Anuladas</div></div>`;
 
-    document.getElementById('trolleysList').innerHTML = TROLLEYS.map(t => `
+    document.getElementById('trolleysList').innerHTML = emCurso.map(t => `
         <div class="trow ${t.anulada?'void':''}">
             <div class="qty ${t.anulada?'void':''}">${t.qty}</div>
             <div class="tinfo">
@@ -1394,7 +1472,7 @@ function renderTrolleys(){
                 <div class="tm">${t.modelo}${t.anulada?' · ANULADA':''}</div>
             </div>
             <div class="sup">
-                ${t.fornecedores.map(f=>`<span class="${t.anulada?'void':''}">${f.n}${f.q>1?' ×'+f.q:''}</span>`).join('')}
+                ${(t.fornecedores || []).map(f=>`<span class="${t.anulada?'void':''}">${f.n}${f.q>1?' ×'+f.q:''}</span>`).join('')}
             </div>
         </div>`).join('');
 }
@@ -1487,6 +1565,7 @@ function init(){
     renderMontagem();
     renderSoldadura();
     renderTrolleys();
+    refreshTrolleysFromSheet();
     renderContinuidade();
     tick();
     loadMapa();
@@ -1494,6 +1573,7 @@ function init(){
 }
 
 setInterval(tick, 1000);
+setInterval(refreshTrolleysFromSheet, 180000);
 window.addEventListener('load', init);
 </script>
 </body>
