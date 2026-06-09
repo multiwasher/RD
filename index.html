@@ -827,7 +827,7 @@
         };
 
         const getStatus = (inst) => {
-            const hasProd = hasValue(inst["DATA INICIO PRODUÇÃO"]);
+            const hasProd = !!parseDate(inst["DATA INICIO PRODUÇÃO"]);
             const hasPack = hasValue(inst["DATA EMBALAGEM"]);
             const hasShip = hasValue(inst["DATA EXPEDIÇÃO (Primeira)"]);
             const statusSheet = (inst.STATUS || "").toUpperCase();
@@ -853,7 +853,7 @@
                 return { label: "BUFFER", color: "bg-white text-slate-900 border-slate-200", weight: 1, isLate: false, darkBg: false };
             }
 
-            return { label: "EM PRODUÇÃO", color: "bg-green-100 text-green-800", weight: 2, isLate: false, darkBg: false };
+            return { label: "BUFFER", color: "bg-white text-slate-900 border-slate-200", weight: 1, isLate: false, darkBg: false };
         };
 
         function toggleFilters() {
@@ -1502,7 +1502,26 @@ function renderTrolleys(){
     const normStatus = (v) => (v || '').toString().trim().toLowerCase();
     const emCurso = TROLLEYS.filter(t => normStatus(t.estado) === 'em curso' && t.qty > 0);
     const aguardaInfo = TROLLEYS.filter(t => normStatus(t.estado) === 'aguarda info' && t.qty > 0);
-    const visible = [...emCurso, ...aguardaInfo];
+    const parseTrolleyDate = (val) => {
+        const s = (val || '').toString().trim();
+        const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (!m) return null;
+        const day = parseInt(m[1], 10);
+        const month = parseInt(m[2], 10) - 1;
+        let year = parseInt(m[3], 10);
+        if (year < 100) year += 2000;
+        const d = new Date(year, month, day);
+        return isNaN(d.getTime()) ? null : d;
+    };
+
+    const visible = [...emCurso, ...aguardaInfo].sort((a, b) => {
+        const da = parseTrolleyDate(a.pretendida);
+        const db = parseTrolleyDate(b.pretendida);
+        if (da && db) return da - db;
+        if (da) return -1;
+        if (db) return 1;
+        return (a.cliente || '').localeCompare(b.cliente || '');
+    });
 
     const totalEncomendasEmCurso = TROLLEYS_STATUS_COUNTS.emCurso;
     const totalTrolleys = visible.reduce((a, t) => a + t.qty, 0);
