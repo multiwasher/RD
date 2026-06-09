@@ -270,14 +270,17 @@
         /* ============================================================= */
         .trow { display: flex; align-items: center; gap: 10px; background: var(--bg-panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; }
         .trow.void { opacity: 0.5; }
+        .trow.await-info { background: rgba(251, 146, 60, 0.15); border-color: rgba(251, 146, 60, 0.35); }
         .qty { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 9px; background: var(--acc-grad); display: grid; place-items: center; font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 17px; color: #fff; }
         .qty.void { background: rgba(248,113,113,0.18); color: var(--bad); border: 1px solid rgba(248,113,113,0.3); }
+        .qty.await-info { background: linear-gradient(135deg, #fb923c, #f97316); color: #fff; }
         .tinfo { min-width: 0; flex: 1 1 auto; }
         .tinfo .tc { font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .tinfo .tm { font-size: 8.5px; font-weight: 700; color: var(--txt-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
         .sup { flex: 0 0 auto; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 120px; }
         .sup span { font-size: 7.5px; font-weight: 800; letter-spacing: 0.04em; padding: 3px 6px; border-radius: 5px; background: rgba(81,184,234,0.1); color: var(--acc-1); border: 1px solid rgba(81,184,234,0.2); white-space: nowrap; }
         .sup span.void { background: rgba(248,113,113,0.12); color: var(--bad); border-color: rgba(248,113,113,0.25); }
+        .sup span.await-info { background: rgba(251,146,60,0.18); color: #fdba74; border-color: rgba(251,146,60,0.35); }
 
         /* ============================================================= */
         /*  CONTINUIDADE PE — KPIs + barras de categoria + gauge         */
@@ -754,7 +757,8 @@
     </div>
 
     <script>
-        const GOOGLE_SHEET_ID = '1M8smTePsPhRsnv5T0EVMQxk9qh5bp3BABiAVs7CNb4Q';
+        const GOOGLE_SHEET_ID = '13-0N_EZlgo36jH5xJNIXeT3pa2tunnu2DB47bQwpdpo';
+        const GOOGLE_SHEET_TAB = 'MAPA DE ENTREGAS';
 
         /* Armazenamento local à prova de falhas.
            Em iframes com origem opaca (ex.: Blob) ou com cookies/armazenamento
@@ -769,9 +773,10 @@
 
         const _P_AUTH_HASH = "TVdTMjAyNg=="; 
 
-        const STATUS_MAP = { "STOCK SOMENGIL": "stock", "BUFFER": "buffer", "EM PRODUÇÃO": "prod", "EM TRÂNSITO": "transit", "EM INSTALAÇÃO": "in_install", "INSTALADA": "installed" };
-        const STATUS_ICONS = { "STOCK SOMENGIL": "package", "BUFFER": "layers", "EM PRODUÇÃO": "activity", "EM TRÂNSITO": "send", "EM INSTALAÇÃO": "wrench", "INSTALADA": "check-circle-2" };
+        const STATUS_MAP = { "STOCK": "stock", "BUFFER": "buffer", "EM PRODUÇÃO": "prod", "EM TRÂNSITO": "transit" };
+        const STATUS_ICONS = { "STOCK": "package", "BUFFER": "layers", "EM PRODUÇÃO": "activity", "EM TRÂNSITO": "send" };
         const EQUIPMENT_TYPES = ["MWS200", "MWS300", "MWS500", "MWS700", "MWS715", "CARROS", "OUTROS"];
+        const GROUP_PREVIEW_LIMIT = 6;
 
         let installations = [];
         let state = { 
@@ -782,7 +787,8 @@
             sortMode: 'delay_first', 
             isAuthorized: false, 
             selectedId: null,
-            filtersVisible: false
+            filtersVisible: false,
+            expandedGroups: {}
         };
         let hasAppliedInitialYearDefault = false;
         let modelChartInstance = null;
@@ -824,25 +830,30 @@
             const hasProd = hasValue(inst["DATA INICIO PRODUÇÃO"]);
             const hasPack = hasValue(inst["DATA EMBALAGEM"]);
             const hasShip = hasValue(inst["DATA EXPEDIÇÃO (Primeira)"]);
-            const hasInst = hasValue(inst["DATA INSTALAÇÃO"]);
-            const hasTarget = hasValue(inst["DATA PRETENDIDA"]);
             const statusSheet = (inst.STATUS || "").toUpperCase();
-            const targetDate = parseDate(inst["DATA PRETENDIDA"]);
-            const shipDate = parseDate(inst["DATA EXPEDIÇÃO (Primeira)"]);
-            const today = new Date();
-            let isLate = false;
-            if (hasTarget && targetDate) {
-                if (!hasShip) { if (today > targetDate) isLate = true; }
-                else if (shipDate) { if (shipDate > targetDate) isLate = true; }
+
+            if (statusSheet === "EM TRANSPORTE") {
+                return { label: "EM TRÂNSITO", color: "bg-yellow-400 text-yellow-950", weight: 3, isLate: false, darkBg: false, isYellowCard: true };
             }
-            if (hasInst) return { label: "INSTALADA", color: "bg-emerald-900 text-white", weight: 6, isLate: isLate, darkBg: true };
-            if (hasShip && !hasInst) {
-                const isWork = statusSheet === "EM INSTALAÇÃO";
-                return { label: isWork ? "EM INSTALAÇÃO" : "EM TRÂNSITO", color: isWork ? "bg-sky-400 text-sky-950" : "bg-yellow-400 text-yellow-950", weight: isWork ? 3 : 4, isLate: isLate, darkBg: false, isYellowCard: true };
+
+            if (hasPack && !hasShip) {
+                return { label: "STOCK", color: "bg-blue-600 text-white", weight: 0, isLate: false, darkBg: true };
             }
-            if (hasProd && hasPack && !hasShip) return { label: "STOCK SOMENGIL", color: "bg-blue-600 text-white", weight: 0, isLate: isLate, darkBg: true };
-            if (hasProd && !hasPack && !hasShip) return { label: "EM PRODUÇÃO", color: "bg-green-100 text-green-800", weight: 2, isLate: isLate, darkBg: false };
-            return { label: "BUFFER", color: "bg-white text-slate-900 border-slate-200", weight: 1, isLate: isLate, darkBg: false };
+
+            if (hasProd && !hasPack) {
+                return { label: "EM PRODUÇÃO", color: "bg-green-100 text-green-800", weight: 2, isLate: false, darkBg: false };
+            }
+
+            if (
+                !hasValue(inst["DATA INICIO PRODUÇÃO"]) &&
+                !hasValue(inst["DATA EMBALAGEM"]) &&
+                !hasValue(inst["DATA EXPEDIÇÃO (Primeira)"]) &&
+                !hasValue(inst["SÉRIE 1"])
+            ) {
+                return { label: "BUFFER", color: "bg-white text-slate-900 border-slate-200", weight: 1, isLate: false, darkBg: false };
+            }
+
+            return { label: "EM PRODUÇÃO", color: "bg-green-100 text-green-800", weight: 2, isLate: false, darkBg: false };
         };
 
         function toggleFilters() {
@@ -901,7 +912,7 @@
             const btn = document.getElementById('refreshBtn');
             if(btn) btn.classList.add('animate-spin');
             try {
-                const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json`;
+                const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(GOOGLE_SHEET_TAB)}`;
                 const response = await fetch(url);
                 const text = await response.text();
                 const json = JSON.parse(text.substring(text.indexOf("(") + 1, text.lastIndexOf(")")));
@@ -929,7 +940,11 @@
                     const edits = JSON.parse(safeStore.get(`edits_${base["NÚMERO"]}`)) || {};
                     const merged = { ...base, ...edits };
                     return { ...merged, _cachedStatus: getStatus(merged) };
-                }).filter(i => i["NÚMERO"] && i["NÚMERO"] !== "NÚMERO");
+                }).filter(i => {
+                    const n = (i["NÚMERO"] || '').toString().trim();
+                    if (!n) return false;
+                    return !/^n(ú|u|º|o|\.?)/i.test(n);
+                });
 
                 if (!hasAppliedInitialYearDefault && state.yearFilters.length === 0) {
                     const availableYears = installations
@@ -984,6 +999,10 @@
             sortedGroups.forEach(([label, items]) => {
                 const conf = items[0]._cachedStatus;
                 items.sort((a,b) => a["NÚMERO"].localeCompare(b["NÚMERO"], undefined, {numeric: true}));
+                const isExpanded = !!state.expandedGroups[label];
+                const hasOverflow = items.length > GROUP_PREVIEW_LIMIT;
+                const visibleItems = isExpanded ? items : items.slice(0, GROUP_PREVIEW_LIMIT);
+                const hiddenCount = Math.max(items.length - GROUP_PREVIEW_LIMIT, 0);
                 const groupHtml = `
                     <section class="animate-in">
                         <div class="flex items-center gap-2 mb-2.5 border-b border-slate-200 pb-2">
@@ -991,7 +1010,7 @@
                             <div class="min-w-0 flex items-baseline gap-2"><h2 class="text-[10px] font-black uppercase tracking-widest text-slate-900 truncate">${label}</h2><span class="text-[8px] font-bold text-slate-400 uppercase whitespace-nowrap">${items.length} un.</span></div>
                         </div>
                         <div class="grid grid-cols-3 gap-2">
-                            ${items.map(i => {
+                            ${visibleItems.map(i => {
                                 const st = i._cachedStatus; 
                                 const hasNotes = parseNotes(i["OBSERVAÇÕES"]).filter(n => !n.resolved).length > 0;
                                 let alertClasses = st.isLate ? (st.isYellowCard ? "text-black stroke-[3]" : (st.darkBg ? "text-white" : "text-red-500")) : "";
@@ -1013,10 +1032,21 @@
                                 </div>`;
                             }).join('')}
                         </div>
+                        ${hasOverflow ? `
+                        <div class="mt-2 flex justify-center">
+                            <button onclick="toggleGroupExpand('${label}')" class="px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all">
+                                ${isExpanded ? 'Recolher' : `Expandir +${hiddenCount}`}
+                            </button>
+                        </div>` : ''}
                     </section>`; container.insertAdjacentHTML('beforeend', groupHtml);
             });
             lucide.createIcons();
             fitToHeight();
+        }
+
+        function toggleGroupExpand(label) {
+            state.expandedGroups[label] = !state.expandedGroups[label];
+            renderCards();
         }
 
         /* ===== AUTO-FIT À ALTURA DA JANELA =====================
@@ -1275,6 +1305,24 @@ const SOLDADURA = [
 
 // --- TROLLEYS: encomendas + fornecedor ---
 let TROLLEYS = [];
+let TROLLEYS_STATUS_COUNTS = { emCurso: 0, aguardaInfo: 0 };
+
+function normalizeTrolleyStatus(value) {
+    const raw = (value || '').toString().toLowerCase();
+    const s = raw
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (/^em\s*curso$/.test(s)) return 'em curso';
+
+    // Aceita variações comuns: "Aguarda Info", "Aguada Info", com/sem pontuação.
+    if ((s.includes('agua') || s.includes('aguar')) && s.includes('info')) return 'aguarda info';
+
+    return '';
+}
 
 async function fetchTrolleysFromSheet(){
     try {
@@ -1290,10 +1338,7 @@ async function fetchTrolleysFromSheet(){
             if (cell.v === undefined || cell.v === null) return '';
             return String(cell.v).trim();
         };
-        const isRelevantStatus = (v) => {
-            const s = (v || '').toString().trim();
-            return s === 'Em curso' || s === 'Finalizado' || s === 'Anulada' || s === 'Anulado';
-        };
+        const isRelevantStatus = (v) => normalizeTrolleyStatus(v) !== '';
 
         // Mapeamento fixo conforme cabecalho recebido:
         // E CLIENTE, F MODELO, G MODELO, I DATA PRETENDIDA, M NUMERO TROLLEYS,
@@ -1302,6 +1347,7 @@ async function fetchTrolleysFromSheet(){
             .map((row) => {
                 const c = row?.c || [];
                 const statusText = getText(c[25]); // Coluna Z
+                const statusNorm = normalizeTrolleyStatus(statusText);
                 const modeloF = getText(c[5]);
                 const modeloG = getText(c[6]);
                 const qty = parseInt(getText(c[12]).replace(/[^0-9]/g, ''), 10) || 0;
@@ -1333,11 +1379,18 @@ async function fetchTrolleysFromSheet(){
                     qty,
                     pretendida: getText(c[8]),
                     fornecedores,
-                    anulada: /anulad/i.test(statusText),
-                    estado: statusText
+                    aguardaInfo: statusNorm === 'aguarda info',
+                    estado: statusNorm,
+                    estadoRaw: statusText
                 };
             })
-            .filter(t => t.qty > 0 && isRelevantStatus(t.estado));
+            .filter(t => isRelevantStatus(t.estado));
+
+        TROLLEYS_STATUS_COUNTS = mapped.reduce((acc, t) => {
+            if (t.estado === 'em curso') acc.emCurso += 1;
+            if (t.estado === 'aguarda info') acc.aguardaInfo += 1;
+            return acc;
+        }, { emCurso: 0, aguardaInfo: 0 });
 
         TROLLEYS = mapped;
     } catch (err) {
@@ -1446,35 +1499,35 @@ function renderSoldadura(){
 /*  RENDER — TROLLEYS                                                 */
 /* ================================================================= */
 function renderTrolleys(){
-    const normStatus = (v) => (v || '').toString().trim();
-    const emCurso = TROLLEYS.filter(t => normStatus(t.estado) === 'Em curso');
-    const finalizado = TROLLEYS.filter(t => normStatus(t.estado) === 'Finalizado');
-    const anuladas = TROLLEYS.filter(t => {
-        const s = normStatus(t.estado);
-        return s === 'Anulada' || s === 'Anulado';
-    });
+    const normStatus = (v) => (v || '').toString().trim().toLowerCase();
+    const emCurso = TROLLEYS.filter(t => normStatus(t.estado) === 'em curso' && t.qty > 0);
+    const aguardaInfo = TROLLEYS.filter(t => normStatus(t.estado) === 'aguarda info' && t.qty > 0);
+    const visible = [...emCurso, ...aguardaInfo];
 
-    const totalEncomendasEmCurso = emCurso.length;
-    const totalTrolleys = [...emCurso, ...finalizado].reduce((a, t) => a + t.qty, 0);
-    const totalAnuladas = anuladas.length;
+    const totalEncomendasEmCurso = TROLLEYS_STATUS_COUNTS.emCurso;
+    const totalTrolleys = visible.reduce((a, t) => a + t.qty, 0);
+    const totalAguardaInfo = TROLLEYS_STATUS_COUNTS.aguardaInfo;
 
     document.getElementById('trolleysBadge').textContent = totalTrolleys + " Trolleys";
     document.getElementById('trolleysKpis').innerHTML = `
         <div class="kpi"><div class="v">${totalEncomendasEmCurso}</div><div class="l">Encomendas</div></div>
         <div class="kpi"><div class="v">${totalTrolleys}</div><div class="l">Trolleys</div></div>
-        <div class="kpi"><div class="v bad-c">${totalAnuladas}</div><div class="l">Aguarda Info</div></div>`;
+        <div class="kpi"><div class="v bad-c">${totalAguardaInfo}</div><div class="l">Aguarda Info</div></div>`;
 
-    document.getElementById('trolleysList').innerHTML = emCurso.map(t => `
-        <div class="trow ${t.anulada?'void':''}">
-            <div class="qty ${t.anulada?'void':''}">${t.qty}</div>
+    document.getElementById('trolleysList').innerHTML = visible.map(t => {
+        const isAguardaInfo = !!t.aguardaInfo;
+        return `
+        <div class="trow ${isAguardaInfo?'void':''} ${isAguardaInfo?'await-info':''}">
+            <div class="qty ${isAguardaInfo?'void':''} ${isAguardaInfo?'await-info':''}">${t.qty}</div>
             <div class="tinfo">
                 <div class="tc">${t.cliente}</div>
-                <div class="tm">${t.modelo}${t.anulada?' · ANULADA':''}</div>
+                <div class="tm">${t.modelo}${isAguardaInfo?' · AGUARDA INFO':''}</div>
             </div>
             <div class="sup">
-                ${(t.fornecedores || []).map(f=>`<span class="${t.anulada?'void':''}">${f.n}${f.q>1?' ×'+f.q:''}</span>`).join('')}
+                ${(t.fornecedores || []).map(f=>`<span class="${isAguardaInfo?'void':''} ${isAguardaInfo?'await-info':''}">${f.n}${f.q>1?' ×'+f.q:''}</span>`).join('')}
             </div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 }
 
 /* ================================================================= */
