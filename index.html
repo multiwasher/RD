@@ -1462,7 +1462,7 @@ function renderTrolleys(){
     document.getElementById('trolleysKpis').innerHTML = `
         <div class="kpi"><div class="v">${totalEncomendasEmCurso}</div><div class="l">Encomendas</div></div>
         <div class="kpi"><div class="v">${totalTrolleys}</div><div class="l">Trolleys</div></div>
-        <div class="kpi"><div class="v bad-c">${totalAnuladas}</div><div class="l">Anuladas</div></div>`;
+        <div class="kpi"><div class="v bad-c">${totalAnuladas}</div><div class="l">Aguarda Info</div></div>`;
 
     document.getElementById('trolleysList').innerHTML = emCurso.map(t => `
         <div class="trow ${t.anulada?'void':''}">
