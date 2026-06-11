@@ -140,13 +140,13 @@
         .clock .d { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--txt-mute); margin-top: 4px; }
 
         /* ----- Grelha principal de painéis ----- */
-        /*  Coluna 1 (mapa) ocupa toda a altura. Colunas 2 e 3 partidas 50/50. */
+        /*  Coluna 1 (mapa) ocupa toda a altura. Linhas em 75/25 para dar mais altura ao topo. */
         .grid {
             flex: 1 1 auto;
             min-height: 0;
             display: grid;
             grid-template-columns: 1.28fr 1fr 1fr;
-            grid-template-rows: 1fr 1fr;
+            grid-template-rows: 3fr 1fr;
             gap: 12px;
         }
         /* Posicionamento explícito de cada bloco */
@@ -1369,7 +1369,8 @@ async function refreshMontagemFromSheet() {
 
 // --- SOLDADURA: cada lote com 3 fases (Laser / Serralharia / Soldadura) ---
 //  estado: "done" | "active" | "pending"
-const SOLDADURA = [
+const SOLDADURA_SHEET_TAB = 'SOLDADURA';
+const SOLDADURA_FALLBACK = [
     { lote:"MWS715 SDS — 28L",      qty:3, pretendida:"29/05", laser:"done",    serr:"done",   sold:"done"    },
     { lote:"SPARE PARTS",           qty:1, pretendida:"01/06", laser:"pending", serr:"pending",sold:"done"    },
     { lote:"MWS700 SDS EXD — 48L1", qty:1, pretendida:"02/06", laser:"done",    serr:"done",   sold:"active"  },
@@ -1378,6 +1379,86 @@ const SOLDADURA = [
     { lote:"MWS715 SDS — 29L",      qty:3, pretendida:"22/06", laser:"done",    serr:"pending",sold:"pending" },
     { lote:"MWS500 SDS — 88L",      qty:3, pretendida:"26/06", laser:"done",    serr:"active", sold:"pending" },
 ];
+let SOLDADURA = [...SOLDADURA_FALLBACK];
+
+function hasSheetValue(value) {
+    if (value === undefined || value === null) return false;
+    const v = String(value).trim().toLowerCase();
+    return v !== '' && v !== '-' && v !== 'n/a' && v !== 'na' && v !== 'null';
+}
+
+function parseSoldaduraQty(value) {
+    const txt = String(value || '').trim();
+    const n = parseInt(txt.replace(/[^0-9]/g, ''), 10);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function formatSoldaduraQtyLabel(rawQty) {
+    const txt = String(rawQty || '').trim();
+    if (!txt) return '0 un.';
+    if (/un\.?/i.test(txt)) return txt;
+    const n = parseSoldaduraQty(txt);
+    return n > 0 ? `${n} un.` : txt;
+}
+
+async function fetchSoldaduraFromSheet() {
+    try {
+        const url = `https://docs.google.com/spreadsheets/d/${MAIN_GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SOLDADURA_SHEET_TAB)}`;
+        const response = await fetch(url);
+        const text = await response.text();
+        const json = JSON.parse(text.substring(text.indexOf("(") + 1, text.lastIndexOf(")")));
+        const rows = json?.table?.rows || [];
+
+        SOLDADURA = rows.map((row) => {
+            const c = row?.c || [];
+            const textAt = (idx) => {
+                const cell = c[idx];
+                if (!cell) return '';
+                if (cell.f !== undefined && cell.f !== null && String(cell.f).trim() !== '') return String(cell.f).trim();
+                if (cell.v === undefined || cell.v === null) return '';
+                return String(cell.v).trim();
+            };
+
+            const lote = textAt(0);
+            if (!lote) return null;
+
+            const qtdRaw = textAt(1);
+            const dataPretendida = textAt(2);
+            const dataLaser = textAt(3);
+            const inicioSerralharia = textAt(4);
+            const fimSerralharia = textAt(5);
+            const inicioSoldadura = textAt(6);
+            const fimSoldadura = textAt(7);
+
+            const laser = hasSheetValue(dataLaser) ? 'done' : 'pending';
+            const serr = hasSheetValue(fimSerralharia) ? 'done' : (hasSheetValue(inicioSerralharia) ? 'active' : 'pending');
+            const sold = hasSheetValue(fimSoldadura) ? 'done' : (hasSheetValue(inicioSoldadura) ? 'active' : 'pending');
+
+            return {
+                lote,
+                qty: parseSoldaduraQty(qtdRaw),
+                qtyLabel: formatSoldaduraQtyLabel(qtdRaw),
+                pretendida: dataPretendida,
+                laser,
+                serr,
+                sold,
+            };
+        }).filter(Boolean);
+
+        if (!SOLDADURA.length) {
+            SOLDADURA = [...SOLDADURA_FALLBACK].map(item => ({ ...item, qtyLabel: `${item.qty} un.` }));
+        }
+    } catch (err) {
+        console.error('Falha ao carregar SOLDADURA da Sheet:', err);
+        SOLDADURA = [...SOLDADURA_FALLBACK].map(item => ({ ...item, qtyLabel: `${item.qty} un.` }));
+    }
+}
+
+async function refreshSoldaduraFromSheet() {
+    await fetchSoldaduraFromSheet();
+    renderSoldadura();
+    if (window.lucide) lucide.createIcons();
+}
 
 // --- TROLLEYS: encomendas + fornecedor ---
 let TROLLEYS = [];
@@ -1561,7 +1642,7 @@ function renderSoldadura(){
         <div class="lot">
             <div class="info">
                 <div class="l1">${l.lote}</div>
-                <div class="l2">${l.qty} un.</div>
+                <div class="l2">${l.qtyLabel || `${l.qty} un.`}</div>
             </div>
             <div class="stepper">
                 ${stepHtml(l.laser,'Laser')}
@@ -1735,7 +1816,7 @@ function loadMapa(){
 
 function init(){
     refreshMontagemFromSheet();
-    renderSoldadura();
+    refreshSoldaduraFromSheet();
     renderTrolleys();
     refreshTrolleysFromSheet();
     renderContinuidade();
@@ -1745,6 +1826,7 @@ function init(){
 }
 
 setInterval(tick, 1000);
+setInterval(refreshSoldaduraFromSheet, 180000);
 setInterval(refreshTrolleysFromSheet, 180000);
 window.addEventListener('load', init);
 </script>
