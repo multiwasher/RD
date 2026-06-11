@@ -778,8 +778,8 @@
 
         const _P_AUTH_HASH = "TVdTMjAyNg=="; 
 
-        const STATUS_MAP = { "STOCK": "stock", "BUFFER": "buffer", "EM PRODUÇÃO": "prod", "EM TRÂNSITO": "transit" };
-        const STATUS_ICONS = { "STOCK": "package", "BUFFER": "layers", "EM PRODUÇÃO": "activity", "EM TRÂNSITO": "send" };
+        const STATUS_MAP = { "EM PRODUÇÃO": "prod", "EM TRÂNSITO": "transit", "STOCK": "stock", "BUFFER": "buffer" };
+        const STATUS_ICONS = { "EM PRODUÇÃO": "activity", "EM TRÂNSITO": "send", "STOCK": "package", "BUFFER": "layers" };
         const EQUIPMENT_TYPES = ["MWS200", "MWS300", "MWS500", "MWS700", "MWS715", "CARROS", "OUTROS"];
         const GROUP_PREVIEW_LIMIT = 6;
 
@@ -838,15 +838,15 @@
             const statusSheet = (inst.STATUS || "").toUpperCase();
 
             if (statusSheet === "EM TRANSPORTE") {
-                return { label: "EM TRÂNSITO", color: "bg-yellow-400 text-yellow-950", weight: 3, isLate: false, darkBg: false, isYellowCard: true };
+                return { label: "EM TRÂNSITO", color: "bg-yellow-400 text-yellow-950", weight: 1, isLate: false, darkBg: false, isYellowCard: true };
             }
 
             if (hasPack && !hasShip) {
-                return { label: "STOCK", color: "bg-blue-600 text-white", weight: 0, isLate: false, darkBg: true };
+                return { label: "STOCK", color: "bg-blue-600 text-white", weight: 2, isLate: false, darkBg: true };
             }
 
             if (hasProd && !hasPack) {
-                return { label: "EM PRODUÇÃO", color: "bg-green-100 text-green-800", weight: 2, isLate: false, darkBg: false };
+                return { label: "EM PRODUÇÃO", color: "bg-green-100 text-green-800", weight: 0, isLate: false, darkBg: false };
             }
 
             if (
@@ -855,10 +855,10 @@
                 !hasValue(inst["DATA EXPEDIÇÃO (Primeira)"]) &&
                 !hasValue(inst["SÉRIE 1"])
             ) {
-                return { label: "BUFFER", color: "bg-white text-slate-900 border-slate-200", weight: 1, isLate: false, darkBg: false };
+                return { label: "BUFFER", color: "bg-white text-slate-900 border-slate-200", weight: 3, isLate: false, darkBg: false };
             }
 
-            return { label: "BUFFER", color: "bg-white text-slate-900 border-slate-200", weight: 1, isLate: false, darkBg: false };
+            return { label: "BUFFER", color: "bg-white text-slate-900 border-slate-200", weight: 3, isLate: false, darkBg: false };
         };
 
         function toggleFilters() {
